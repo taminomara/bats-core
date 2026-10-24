@@ -1,34 +1,60 @@
 [project]
 name = "bats-core"
+version = "1.14.0"
 description = "Bash Automated Testing System (bats-core), packaged for pip"
-dynamic = ["version"]
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10"
-# Runtime deps: pin exact for a service; use >=X,<N+1 for a library so Renovate
-# can widen the cap. Add with `uv add`.
 dependencies = []
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX",
+    "Operating System :: MacOS",
+    "Programming Language :: Unix Shell",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Testing",
+]
+
+[project.urls]
+Homepage = "https://github.com/taminomara/bats-core"
+Upstream = "https://github.com/bats-core/bats-core"
+
+[project.scripts]
+bats = "bats_core.__main__:main"
+
+# Upstream release bundled into the wheel; rewritten by scripts/bump.py.
+[tool.bats-core]
+tag = "v1.14.0"
+sha256 = "bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
 
 [dependency-groups]
 dev = [
+    "hatchling==1.32.4",
     "poethepoet==0.49.0",
     "prek==0.5.5",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "ruff==0.15.1",
+    "tomli==2.5.0; python_version < '3.11'",
     "tox==4.65.0",
     "tox-uv==1.36.1",
     "ty==0.0.34",
 ]
 
 [build-system]
-requires = ["setuptools>=68", "setuptools_scm[toml]>=8", "wheel>=0.40"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build]
+# _bats/ is gitignored; hatchling skips VCS-ignored files unless listed here.
+artifacts = ["src/bats_core/_bats/"]
 
-[tool.setuptools_scm]
-version_file = "src/bats_core/_version.py"
-fallback_version = "0.0.0"
+[tool.hatch.build.targets.wheel]
+packages = ["src/bats_core"]
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
 
 [tool.ruff.lint]
 extend-select = ["I", "INP", "T20", "PT", "RET", "SIM", "SLOT", "RUF022"]
@@ -58,11 +84,14 @@ extend-safe-fixes = [
 ]
 future-annotations = true
 
+[tool.ruff.lint.per-file-ignores]
+"scripts/**" = ["T20"]
+
 [tool.ruff.lint.isort]
 required-imports = ["from __future__ import annotations"]
 
 [tool.ty.src]
-include = ["src", "tests"]
+include = ["src", "tests", "scripts", "hatch_build.py"]
 
 [tool.ty.environment]
 python-version = "3.10"

@@ -1,5 +1,5 @@
 [run]
-source = ["bats_core"]
+source = ["bats_core", "scripts"]
 branch = false
 relative_files = true
 
