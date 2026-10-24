@@ -61,7 +61,11 @@ uv run poe test-all -- -x --lf
 
 tox builds `dist/` once through `scripts/build.py` and installs that wheel
 into every Python environment, so the smoke tests exercise the artifact that
-gets published.
+gets published. In CI a dedicated `build` job produces `dist/` with no
+project environment installed, and the test jobs download it and run with
+`BATS_CORE_PREBUILT=1`, which makes `scripts/build.py` reuse the wheel
+instead of rebuilding. Every platform tests, and the release publishes, the
+same file.
 
 ## Release process
 

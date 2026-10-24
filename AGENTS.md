@@ -60,7 +60,8 @@ over any `[tool.pytest.ini_options]` in `pyproject.toml`.
 - `scripts/fetch_bats.py` — downloads the pinned tarball, verifies SHA-256,
   unpacks the runtime tree into `src/bats_core/_bats/`.
 - `scripts/build.py` — cleans `dist/`, fetches, runs `uv build`. The only way
-  `dist/` is produced (poe `build`, the tox package env, CI).
+  `dist/` is produced (poe `build`, the tox package env, CI). With
+  `BATS_CORE_PREBUILT` set it reuses the single wheel already in `dist/`.
 - `scripts/bump.py` — rewrites `version`, `tag` and `sha256` in
   `pyproject.toml` for a new upstream tag or a packaging rebuild.
 - `scripts/check_upstream.py` — the update workflow's detect step; decides

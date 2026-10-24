@@ -16,6 +16,23 @@ permissions:
   contents: read
 
 jobs:
+  # Builds once, with no project environment: `uv build` runs the backend in
+  # an isolated env holding only build-system.requires. Every other job
+  # consumes this artifact.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: astral-sh/setup-uv@v10.3.2
+      - run: uv run --no-project --python 3.14 scripts/build.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -37,27 +54,28 @@ jobs:
       - run: uv run tox -e type -- --color=always
 
   test:
+    needs: build
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      BATS_CORE_PREBUILT: "1"
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || github.ref }}
       - uses: astral-sh/setup-uv@v10.3.2
-      - run: uv sync --frozen
-      - run: uv run tox p --skip-env 'lint|type' -- --color=yes
-      - uses: actions/upload-artifact@v7
-        if: matrix.os == 'ubuntu-latest'
+      - uses: actions/download-artifact@v8
         with:
           name: dist
-          path: dist/
-          if-no-files-found: error
+          path: dist
+      - run: uv sync --frozen
+      - run: uv run tox p --skip-env 'lint|type' -- --color=yes
 
   sdist-install:
-    needs: test
+    needs: [build, test]
     runs-on: ubuntu-latest
     steps:
       - uses: astral-sh/setup-uv@v10.3.2

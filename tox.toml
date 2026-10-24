@@ -92,3 +92,4 @@ set_env = { COVERAGE_FILE = "{env:COVERAGE_FILE:.coverage}" }
 description = "Build dist/ from the pinned bats release"
 commands = [["python", "{tox_root}/scripts/build.py"]]
 package_glob = "{tox_root}/dist/*.whl"
+pass_env = ["BATS_CORE_PREBUILT"]
