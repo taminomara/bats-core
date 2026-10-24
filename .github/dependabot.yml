@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Same idea as COOLDOWN_DAYS for upstream bats: a compromised or broken
+    # release gets time to be pulled before it is auto-merged here.
+    cooldown:
+      default-days: 7
     groups:
       python:
         patterns: ["*"]
@@ -12,6 +16,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Same idea as COOLDOWN_DAYS for upstream bats: a compromised or broken
+    # release gets time to be pulled before it is auto-merged here.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
@@ -20,6 +28,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Same idea as COOLDOWN_DAYS for upstream bats: a compromised or broken
+    # release gets time to be pulled before it is auto-merged here.
+    cooldown:
+      default-days: 7
     groups:
       pre-commit:
         patterns: ["*"]

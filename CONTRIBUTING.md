@@ -80,19 +80,24 @@ Releases are automatic. `.github/workflows/update.yml` runs daily:
 
 1. `scripts/check_upstream.py` compares the latest upstream release with the
    pin and checks whether PyPI already has the matching version.
-2. If a bump is due, `scripts/bump.py` resolves the tag to its commit,
-   rewrites the pin on a branch `bump/<version>`, and `ci.yml` runs the full
-   matrix against it.
-3. On green, the workflow fast-forwards `main`, tags `v<version>`, publishes
-   `dist/` to PyPI through Trusted Publishing, and creates a GitHub release.
+2. If a bump is due, `scripts/bump.py` resolves the tag to its commit and
+   rewrites the pin on a branch `bump/<version>`. `ci.yml` runs the full
+   matrix against that exact commit, not the branch name.
+3. On green, the workflow checks that the branch still points at the tested
+   commit, fast-forwards `main` to it, tags `v<version>`, publishes `dist/`
+   to PyPI through Trusted Publishing, and creates a GitHub release. A branch
+   that moved mid-run is refused.
 4. On red, it opens a pull request from the bump branch with a link to the
    failed run. The branch stays until a human merges or deletes it; while it
    exists, later scheduled runs skip that version instead of opening
    duplicates. Pull requests opened by the workflow token do not trigger
    `ci.yml` by themselves; re-run CI manually after fixing.
-5. If the publish job itself fails after `main` was updated, the workflow
-   opens an issue instead. Every publish step is idempotent, so the next
-   scheduled run (or a manual dispatch) retries the release.
+5. If the publish job fails after `main` was updated, the workflow opens an
+   issue. The steps after the fast-forward tolerate partial completion, so a
+   fresh dispatch or the next scheduled run finishes the release. Use a fresh
+   dispatch, not "Re-run failed jobs": the bump branch is deleted once
+   `main` carries the commit. If `main` moved while CI ran, the bump branch
+   is dropped and the next run starts over from the new `main`.
 
 Run the workflow by hand from the Actions tab to publish early, target a
 specific `tag`, or publish a packaging `rebuild` of the current pin.
@@ -114,7 +119,16 @@ principle, get code onto PyPI under this name. Three checks limit that:
   `bump.py` requires GitHub to report the signature as verified and refuses
   otherwise. Upstream has also released from unsigned lightweight tags, so an
   unsigned tag is accepted with a workflow warning rather than refused.
-- **Smoke tests on both platforms**, as described above.
+- **Smoke tests on both platforms**, as described above, run against the
+  exact commit the bump created. The publish job refuses to fast-forward
+  `main` to anything else, so a push to `bump/*` during the run cannot be
+  released.
+
+The pipeline's own inputs get the same treatment. The detect and bump jobs
+run their scripts with `uv run --no-project`, so no dev dependency is ever
+imported in a job holding a write token. Dependabot applies a seven-day
+cooldown before proposing an update, and every action in the workflows is
+pinned to a commit SHA with a version comment that Dependabot keeps current.
 
 On our side, Trusted Publishing attaches PEP 740 attestations to every file
 uploaded to PyPI, naming this repository, workflow and commit.
@@ -158,10 +172,12 @@ job gets another chance.
 
 ### Publishing target
 
-`PYPI_HOST` at the top of `update.yml` selects the index, for both the
-upload and the "does this version already exist" check. It is `pypi.org`.
-To rehearse the pipeline, set it to `test.pypi.org`; TestPyPI needs its own
-pending publisher registration. Tags and GitHub releases created during a
+`PYPI_HOST` and `PYPI_UPLOAD_URL` at the top of `update.yml` select the
+index: the host answers "does this version already exist", the URL receives
+the upload. They are `pypi.org` and `https://upload.pypi.org/legacy/`. To
+rehearse the pipeline, set them to `test.pypi.org` and
+`https://test.pypi.org/legacy/` together; TestPyPI needs its own pending
+publisher registration. Tags and GitHub releases created during a
 TestPyPI phase stay valid: every publish step is idempotent, so the first
 live run uploads the existing version to PyPI and skips the rest.
 

@@ -343,7 +343,9 @@ sees the pin matches upstream but PyPI has no such version, so it proceeds.
 | `_bats/` missing at build | hatch hook fails the build with instructions |
 | Bundled version ≠ pin | hatch hook fails the build |
 | Smoke test red on bump | PR with failing-run link; no publish, no tag |
-| Publish fails after `main` is updated | The bump branch is already deleted, an issue is opened, and the next scheduled run (or a manual dispatch) retries: detect sees PyPI lacks the version and proceeds; tagging, the PyPI upload (`skip-existing: true`) and the GitHub release are all idempotent |
+| Publish fails after `main` is updated | The bump branch is already deleted, an issue is opened, and a fresh dispatch or the next scheduled run retries: detect sees PyPI lacks the version and proceeds, bump re-pins the same values, and tagging, the PyPI upload (`skip-existing: true`) and the GitHub release all tolerate already existing |
+| `main` moves while the bump's CI runs | The fast-forward fails, the bump branch is dropped, and the next run starts over from the new `main` |
+| `bump/*` is pushed to mid-run | CI tests the bump commit by SHA; publish refuses a branch tip that differs from it and opens an issue |
 | GitHub API error on detect | Job fails; next day retries. Nothing is mutated before detect succeeds |
 
 ## Decisions

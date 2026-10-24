@@ -26,13 +26,16 @@ concurrency:
 env:
   BOT_NAME: github-actions[bot]
   BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-  # Index to publish to and to check for existing versions;
-  # test.pypi.org to rehearse the pipeline.
+  # Index checked for existing versions, and the matching upload endpoint.
+  # To rehearse: test.pypi.org and https://test.pypi.org/legacy/
   PYPI_HOST: pypi.org
+  PYPI_UPLOAD_URL: https://upload.pypi.org/legacy/
   # Minimum age of an upstream release before the schedule bumps to it; a
   # dispatch that names a tag bypasses it.
   COOLDOWN_DAYS: "3"
 
+# The detect and bump jobs run the scripts with `uv run --no-project`, so no
+# dev dependency is ever imported in a job that holds a write token.
 jobs:
   detect:
     runs-on: ubuntu-latest
@@ -41,9 +44,10 @@ jobs:
       tag: ${{ steps.check.outputs.tag }}
       version: ${{ steps.check.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.3.2
-      - run: uv sync --frozen
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
@@ -53,7 +57,7 @@ jobs:
           args=(--cooldown-days "$COOLDOWN_DAYS")
           [ -n "$TAG" ] && args+=(--tag "$TAG")
           [ "$REBUILD" = "true" ] && args+=(--rebuild)
-          uv run scripts/check_upstream.py "${args[@]}"
+          uv run --no-project --python 3.14 scripts/check_upstream.py "${args[@]}"
 
   bump:
     needs: detect
@@ -62,21 +66,23 @@ jobs:
     outputs:
       version: ${{ steps.bump.outputs.version }}
       branch: bump/${{ steps.bump.outputs.version }}
+      sha: ${{ steps.push.outputs.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v10.3.2
-      - run: uv sync --frozen
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - id: bump
         env:
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.detect.outputs.tag }}
           REBUILD: ${{ inputs.rebuild }}
         run: |
           args=("$TAG")
           [ "$REBUILD" = "true" ] && args+=(--rebuild)
-          uv run scripts/bump.py "${args[@]}"
-      - name: Push bump branch
+          uv run --no-project --python 3.14 scripts/bump.py "${args[@]}"
+      - id: push
+        name: Push bump branch
         env:
           TAG: ${{ needs.detect.outputs.tag }}
           VERSION: ${{ steps.bump.outputs.version }}
@@ -87,12 +93,15 @@ jobs:
           git add pyproject.toml
           git diff --cached --quiet || git commit -m "Bump bats to $TAG"
           git push -u origin "bump/$VERSION"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+  # CI builds and tests the exact commit the bump job created; publish later
+  # refuses anything else, so a push to bump/* mid-run cannot be released.
   test:
     needs: [detect, bump]
     uses: ./.github/workflows/ci.yml
     with:
-      ref: ${{ needs.bump.outputs.branch }}
+      ref: ${{ needs.bump.outputs.sha }}
 
   publish:
     needs: [detect, bump, test]
@@ -106,39 +115,58 @@ jobs:
       TAG: ${{ needs.detect.outputs.tag }}
       VERSION: ${{ needs.bump.outputs.version }}
       BRANCH: ${{ needs.bump.outputs.branch }}
+      SHA: ${{ needs.bump.outputs.sha }}
       BASE: ${{ github.ref_name }}
     steps:
       # The deploy key is a ruleset bypass actor; pushes to the base branch
       # and the v* tag go over SSH with it.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
           ssh-key: ${{ secrets.DEPLOY_KEY }}
-      # Every step from here on is idempotent, so a failed run can simply be
-      # retried: the bump branch is dropped as soon as the base branch has the commit,
-      # and the tag, PyPI upload and release all tolerate already existing.
-      - name: Fast-forward the base branch
+      # Retry contract: once the base branch carries the tested commit the
+      # bump branch is gone and every later step tolerates already existing,
+      # so a fresh dispatch (not "Re-run failed jobs") finishes the release.
+      # If the base branch moved while CI ran, the bump branch is dropped and
+      # the job fails; the next run starts over from the new base.
+      - name: Fast-forward the base branch to the tested commit
         run: |
           git config user.name "$BOT_NAME"
           git config user.email "$BOT_EMAIL"
-          git fetch origin "$BRANCH"
-          git merge --ff-only "origin/$BRANCH"
+          if git merge-base --is-ancestor "$SHA" HEAD 2>/dev/null; then
+            echo "::notice::$BASE already contains $SHA"
+            exit 0
+          fi
+          if ! git fetch origin "$BRANCH"; then
+            echo "::error::$BRANCH is gone but $BASE does not contain $SHA; investigate by hand"
+            exit 1
+          fi
+          tip=$(git rev-parse FETCH_HEAD)
+          if [ "$tip" != "$SHA" ]; then
+            echo "::error::$BRANCH points at $tip, but CI tested $SHA; refusing to publish"
+            exit 1
+          fi
+          if ! git merge --ff-only "$SHA"; then
+            echo "::error::$BASE moved while CI ran; dropping $BRANCH so the next run retries from the new base"
+            git push origin --delete "$BRANCH"
+            exit 1
+          fi
           git push origin "$BASE"
           git push origin --delete "$BRANCH"
       - name: Tag
         run: |
           if ! git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
-            git tag "v$VERSION"
+            git tag "v$VERSION" "$SHA"
             git push origin "v$VERSION"
           fi
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
           path: dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
-          repository-url: https://${{ env.PYPI_HOST }}/legacy/
+          repository-url: ${{ env.PYPI_UPLOAD_URL }}
           skip-existing: true
       - name: GitHub release
         run: |
@@ -157,21 +185,31 @@ jobs:
       TAG: ${{ needs.detect.outputs.tag }}
       VERSION: ${{ needs.bump.outputs.version }}
       BRANCH: ${{ needs.bump.outputs.branch }}
+      SHA: ${{ needs.bump.outputs.sha }}
       BASE: ${{ github.ref_name }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       TEST_RESULT: ${{ needs.test.result }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - name: Open a PR for a red bump, or an issue for a failed publish
         run: |
+          open_issue() {
+            if [ "$(gh issue list --state open --search "\"$1\" in:title" --json number --jq length)" = "0" ]; then
+              gh issue create --title "$1" --body "$2"
+            fi
+          }
           if [ "$TEST_RESULT" = "failure" ]; then
             gh pr create --base "$BASE" --head "$BRANCH" \
               --title "Bump bats to $TAG (smoke tests failing)" \
               --body "Automated bump failed CI: $RUN_URL"
+          elif git merge-base --is-ancestor "$SHA" "origin/$BASE"; then
+            open_issue "Release v$VERSION failed after merging to $BASE" \
+              "The publish job failed after $BASE was updated: $RUN_URL. Dispatch the Update bats workflow again (not Re-run failed jobs); the remaining steps tolerate partial completion."
+          elif git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            open_issue "Release v$VERSION needs a human: $BRANCH was not published" \
+              "The publish job refused $BRANCH: $RUN_URL. The branch no longer matches the commit CI tested, or $BASE could not be updated. Scheduled runs skip this version while the branch exists; inspect it, then delete it to let the next run retry."
           else
-            title="Release v$VERSION failed after merging to $BASE"
-            if [ "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq length)" = "0" ]; then
-              gh issue create --title "$title" \
-                --body "The publish job failed: $RUN_URL. Re-run the Update bats workflow; every publish step is idempotent."
-            fi
+            echo "::warning::$BASE moved while CI ran; $BRANCH was dropped and the next scheduled run retries from the new base"
           fi
