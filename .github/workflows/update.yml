@@ -136,6 +136,11 @@ jobs:
           git config user.email "$BOT_EMAIL"
           if git merge-base --is-ancestor "$SHA" HEAD 2>/dev/null; then
             echo "::notice::$BASE already contains $SHA"
+            # A retry recreated the bump branch at the same commit; clean it
+            # up, but leave a branch that points elsewhere for a human.
+            if git fetch origin "$BRANCH" 2>/dev/null && [ "$(git rev-parse FETCH_HEAD)" = "$SHA" ]; then
+              git push origin --delete "$BRANCH"
+            fi
             exit 0
           fi
           if ! git fetch origin "$BRANCH"; then
