@@ -84,16 +84,20 @@ Releases are automatic. `.github/workflows/update.yml` runs daily:
    rewrites the pin on a branch `bump/<version>`. `ci.yml` runs the full
    matrix against that exact commit, not the branch name.
 3. On green, the workflow checks that the branch still points at the tested
-   commit, fast-forwards `main` to it, tags `v<version>`, publishes `dist/`
-   to PyPI through Trusted Publishing, and creates a GitHub release. A branch
-   that moved mid-run is refused.
+   commit, fast-forwards `main` to it, tags `v<version>`, creates the GitHub
+   release, and publishes `dist/` to PyPI through Trusted Publishing. The
+   upload comes last on purpose: once PyPI has the version, detect reports
+   "up to date", so anything that must be retried has to happen before it. A
+   branch that moved mid-run is refused.
 4. On red, it opens a pull request from the bump branch with a link to the
    failed run. The branch stays until a human merges or deletes it; while it
    exists, later scheduled runs skip that version instead of opening
    duplicates. Pull requests opened by the workflow token do not trigger
    `ci.yml` by themselves; re-run CI manually after fixing.
-5. If the publish job fails after `main` was updated, the workflow opens an
-   issue. The steps after the fast-forward tolerate partial completion, so a
+5. Every other failure opens a deduplicated issue: a failed detect or bump
+   job, a red CI where no PR could be opened (the initial-publish and retry
+   branches carry no commits), a refused bump branch, and a publish failure
+   after `main` was updated. The steps after the fast-forward tolerate partial completion, so a
    fresh dispatch or the next scheduled run finishes the release. Use a fresh
    dispatch, not "Re-run failed jobs": the bump branch is deleted once
    `main` carries the commit. If `main` moved while CI ran, the bump branch
