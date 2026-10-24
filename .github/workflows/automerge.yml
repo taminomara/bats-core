@@ -1,0 +1,50 @@
+name: Automerge Dependabot
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'pull_request'
+      && github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    environment: automerge
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # main is ruleset-protected; the deploy key is a bypass actor and
+      # GITHUB_TOKEN is not, so the merge is a fast-forward push over SSH.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+      - name: Fast-forward main to the green Dependabot PR
+        run: |
+          pr_sha=$(gh pr list --state open --author app/dependabot --head "$HEAD_BRANCH" \
+            --json headRefOid --jq '.[0].headRefOid // empty')
+          if [ -z "$pr_sha" ]; then
+            echo "::notice::no open Dependabot PR for $HEAD_BRANCH"
+            exit 0
+          fi
+          if [ "$pr_sha" != "$HEAD_SHA" ]; then
+            echo "::notice::PR head moved since CI ran ($pr_sha != $HEAD_SHA); waiting for the next run"
+            exit 0
+          fi
+          git fetch origin "$HEAD_SHA"
+          if ! git merge --ff-only "$HEAD_SHA"; then
+            echo "::notice::main moved; Dependabot will rebase and CI will re-run"
+            exit 0
+          fi
+          git push origin main
+          git push origin --delete "$HEAD_BRANCH"

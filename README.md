@@ -116,6 +116,16 @@ Always pass `tag` when dispatching on a release branch. Without it, detect
 compares the pin against the latest upstream release and would try to move
 the branch to the newest bats.
 
+### Dependency updates
+
+Dependabot (`.github/dependabot.yml`) opens one grouped PR per ecosystem
+every week: Python dev dependencies and `uv.lock` (`uv`), GitHub Actions,
+and pre-commit hook revisions. `.github/workflows/automerge.yml` watches CI
+and, when a Dependabot PR's run is green, fast-forwards `main` to it over
+the deploy key and deletes the branch. GitHub marks the PR merged. If `main`
+moved in the meantime the job skips; Dependabot rebases, CI re-runs, and the
+job gets another chance.
+
 ### Publishing target
 
 `PYPI_HOST` at the top of `update.yml` selects the index, for both the
@@ -138,6 +148,9 @@ existing version to PyPI and skips the rest.
   with write access, and the private key as the environment secret
   `DEPLOY_KEY` on `pypi`. The publish job pushes the base branch and the
   `v*` tag with this key; everything else uses `GITHUB_TOKEN`.
+- Create the `automerge` environment with deployment branch `main` and the
+  same private key as its `DEPLOY_KEY` secret. The automerge job runs there
+  so it never holds PyPI publishing rights.
 - Rulesets (Settings → Rules). Bypass list for both: the deploy key and the
   Maintain and Repository admin roles, bypass mode "Always".
   - Branches `main` and `release/*`: restrict creations, restrict updates,
