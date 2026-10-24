@@ -306,11 +306,13 @@ not on a hardcoded `main`: the schedule only runs on `main`, while a manual
 dispatch on a `release/<major.minor>` branch with an explicit `tag` publishes
 backports such as `1.13.0.1` without touching `main`.
 
-The job that pushes to the base branch and tags uses `GITHUB_TOKEN` with
-`contents: write`; opening PRs needs `pull-requests: write`. The design
-assumes no branch protection on `main`. If protection is added later, the
-"on green" step has to merge via PR with auto-merge instead of pushing; the
-README records this.
+Opening PRs and issues uses `GITHUB_TOKEN` with `pull-requests: write` and
+`issues: write`. Pushing the base branch and the `v*` tag uses a deploy key
+stored as the `DEPLOY_KEY` secret of the `pypi` environment, because
+`main`, `release/*` and `v*` are covered by rulesets (restricted creations,
+updates and deletions, linear history) whose bypass list holds the deploy
+key and the maintainer roles. `GITHUB_TOKEN` cannot bypass rulesets. The
+README's one-time setup lists the exact settings.
 
 ### Publishing
 

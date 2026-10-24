@@ -102,10 +102,13 @@ jobs:
       BRANCH: ${{ needs.bump.outputs.branch }}
       BASE: ${{ github.ref_name }}
     steps:
+      # The deploy key is a ruleset bypass actor; pushes to the base branch
+      # and the v* tag go over SSH with it.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
       # Every step from here on is idempotent, so a failed run can simply be
       # retried: the bump branch is dropped as soon as the base branch has the commit,
       # and the tag, PyPI upload and release all tolerate already existing.

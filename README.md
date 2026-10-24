@@ -121,14 +121,31 @@ the branch to the newest bats.
 - Register a pending publisher for the `bats-core` project on PyPI with owner
   `taminomara`, repository `bats-core`, workflow `update.yml`, environment
   `pypi`.
-- Create the `pypi` environment in the repository settings.
+- Create the `pypi` environment. Limit its deployment branches to `main` and
+  `release/*`. Do not add required reviewers unless every release should
+  wait for a manual approval.
+- Generate an SSH key pair. Add the public key under Settings → Deploy keys
+  with write access, and the private key as the environment secret
+  `DEPLOY_KEY` on `pypi`. The publish job pushes the base branch and the
+  `v*` tag with this key; everything else uses `GITHUB_TOKEN`.
+- Rulesets (Settings → Rules). Bypass list for both: the deploy key and the
+  Maintain and Repository admin roles, bypass mode "Always".
+  - Branches `main` and `release/*`: restrict creations, restrict updates,
+    restrict deletions, block force pushes, require linear history.
+  - Tags `v*`: restrict creations, restrict updates, restrict deletions.
+  Do not require pull requests or signed commits; the bot fast-forwards
+  unsigned bump commits directly.
+- Leave the default workflow token permissions at read-only; both workflows
+  declare what they need.
 - Enable "Allow GitHub Actions to create and approve pull requests" under
   Settings → Actions → General. Without it the on-red path cannot open its
   pull request.
 - Dispatch `update.yml` once with no inputs to publish the current pin.
-- The publish job pushes to `main` directly. If branch protection is ever
-  enabled on `main`, change that step to merge through a pull request with
-  auto-merge.
+
+Anyone with write access can dispatch `update.yml`, and on `main` that does
+no more than the nightly run. A `rebuild` or `tag` dispatch is the one
+action a non-maintainer could take; keep write access to maintainers if that
+matters.
 
 ## License
 
