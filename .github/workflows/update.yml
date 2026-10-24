@@ -1,0 +1,138 @@
+name: Update bats
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream tag to bundle (default: latest release)"
+        type: string
+        default: ""
+      rebuild:
+        description: Publish a packaging rebuild of the current pin
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  BOT_NAME: github-actions[bot]
+  BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync --frozen
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          REBUILD: ${{ inputs.rebuild }}
+        run: |
+          args=()
+          [ -n "$TAG" ] && args+=(--tag "$TAG")
+          [ "$REBUILD" = "true" ] && args+=(--rebuild)
+          uv run scripts/check_upstream.py "${args[@]}"
+
+  bump:
+    needs: detect
+    if: needs.detect.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      branch: bump/${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync --frozen
+      - id: bump
+        env:
+          TAG: ${{ needs.detect.outputs.tag }}
+          REBUILD: ${{ inputs.rebuild }}
+        run: |
+          args=("$TAG")
+          [ "$REBUILD" = "true" ] && args+=(--rebuild)
+          uv run scripts/bump.py "${args[@]}"
+      - name: Push bump branch
+        env:
+          TAG: ${{ needs.detect.outputs.tag }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+          git switch -c "bump/$VERSION"
+          git add pyproject.toml
+          git diff --cached --quiet || git commit -m "Bump bats to $TAG"
+          git push -u origin "bump/$VERSION"
+
+  test:
+    needs: [detect, bump]
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.bump.outputs.branch }}
+
+  publish:
+    needs: [detect, bump, test]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.detect.outputs.tag }}
+      VERSION: ${{ needs.bump.outputs.version }}
+      BRANCH: ${{ needs.bump.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Fast-forward main and tag
+        run: |
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+          git fetch origin "$BRANCH"
+          git merge --ff-only "origin/$BRANCH"
+          git push origin main
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+      - name: GitHub release and cleanup
+        run: |
+          gh release create "v$VERSION" --generate-notes \
+            --notes "Bundles upstream https://github.com/bats-core/bats-core/releases/tag/$TAG"
+          git push origin --delete "$BRANCH"
+
+  report-failure:
+    needs: [detect, bump, test]
+    if: failure() && needs.bump.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.detect.outputs.tag }}
+      BRANCH: ${{ needs.bump.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          gh pr create --base main --head "$BRANCH" \
+            --title "Bump bats to $TAG (smoke tests failing)" \
+            --body "Automated bump failed CI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
