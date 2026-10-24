@@ -77,7 +77,8 @@ gets the `bats` entry point.
 
 ```
 pyproject.toml
-README.md
+README.md                     # user-facing, also the PyPI page
+CONTRIBUTING.md               # development, release and setup notes
 LICENSE                       # this repo's MIT license (packaging code)
 AGENTS.md
 hatch_build.py                # build guard
@@ -315,7 +316,7 @@ stored as the `DEPLOY_KEY` secret of the `pypi` environment, because
 `main`, `release/*` and `v*` are covered by rulesets (restricted creations,
 updates and deletions, linear history) whose bypass list holds the deploy
 key and the maintainer roles. `GITHUB_TOKEN` cannot bypass rulesets. The
-README's one-time setup lists the exact settings.
+`CONTRIBUTING.md`'s one-time setup lists the exact settings.
 
 ### Publishing
 
@@ -325,7 +326,7 @@ owner `taminomara`, repository `bats-core`, workflow `update.yml`, environment
 `permissions: id-token: write`. No PyPI API token is stored anywhere.
 
 Before the first release the project owner registers a *pending publisher* on
-PyPI by hand. This is a one-time step documented in the README. Then a
+PyPI by hand. This is a one-time step documented in `CONTRIBUTING.md`. Then a
 `workflow_dispatch` run with no inputs performs the initial publish: detect
 sees the pin matches upstream but PyPI has no such version, so it proceeds.
 
