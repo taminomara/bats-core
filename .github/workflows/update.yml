@@ -121,11 +121,12 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
           ssh-key: ${{ secrets.DEPLOY_KEY }}
-      # Retry contract: once the base branch carries the tested commit the
-      # bump branch is gone and every later step tolerates already existing,
-      # so a fresh dispatch (not "Re-run failed jobs") finishes the release.
-      # If the base branch moved while CI ran, the bump branch is dropped and
-      # the job fails; the next run starts over from the new base.
+      # Retry contract: once the base branch carries the tested commit this
+      # step is a no-op and every later step tolerates already existing, so
+      # "Re-run failed jobs" finishes the release with the artifact CI tested.
+      # A fresh dispatch works too but builds whatever the base branch points
+      # at by then. If the base branch moved while CI ran, the bump branch is
+      # dropped and the job fails; the next run starts over from the new base.
       - name: Fast-forward the base branch to the tested commit
         run: |
           git config user.name "$BOT_NAME"
@@ -157,7 +158,12 @@ jobs:
           git push origin --delete "$BRANCH"
       - name: Tag
         run: |
-          if ! git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            tagged=$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}" || echo unknown)
+            if [ "$tagged" != "$SHA" ]; then
+              echo "::warning::v$VERSION already points at $tagged; uploading a dist built from $SHA"
+            fi
+          else
             git tag "v$VERSION" "$SHA"
             git push origin "v$VERSION"
           fi
@@ -178,9 +184,10 @@ jobs:
         with:
           skip-existing: true
 
-  # Every failed job ends in a deduplicated issue or a PR, so a red run is
-  # never the only signal. Skipped jobs (detect decided not to bump) do not
-  # count as failures.
+  # Every failed job ends in a deduplicated issue or a PR, with one exception:
+  # when the base branch moved while CI ran (or the bump branch vanished) the
+  # run only warns, because the next scheduled run on main starts over by
+  # itself. Skipped jobs (detect decided not to bump) do not count as failures.
   report-failure:
     needs: [detect, bump, test, publish]
     if: >-
@@ -210,10 +217,10 @@ jobs:
           }
           if [ "$DETECT_RESULT" = "failure" ]; then
             open_issue "Update bats: detect failed" \
-              "The detect job failed (GitHub or PyPI lookup, or a release tag that is not vX.Y.Z): $RUN_URL. The schedule retries daily; this issue is deduplicated by title."
+              "The detect job failed (GitHub or PyPI lookup, or a release tag that is not vX.Y.Z): $RUN_URL. On main the schedule retries daily; a dispatch has to be repeated by hand. This issue is deduplicated by title."
           elif [ "$BUMP_RESULT" = "failure" ]; then
             open_issue "Update bats: bump to $TAG failed before CI" \
-              "The bump job failed (tag signature refused, download, or branch push): $RUN_URL. The schedule retries daily; this issue is deduplicated by title."
+              "The bump job failed (tag signature refused, download, or branch push): $RUN_URL. On main the schedule retries daily; a dispatch has to be repeated by hand. This issue is deduplicated by title."
           elif [ "$TEST_RESULT" = "failure" ]; then
             if [ "$(gh pr list --state open --head "$BRANCH" --json number --jq length)" != "0" ]; then
               echo "::notice::a PR for $BRANCH is already open"
@@ -225,10 +232,10 @@ jobs:
             fi
           elif git merge-base --is-ancestor "$SHA" "origin/$BASE"; then
             open_issue "Release v$VERSION failed after merging to $BASE" \
-              "The publish job failed after $BASE was updated: $RUN_URL. Dispatch the Update bats workflow again (not Re-run failed jobs); the remaining steps tolerate partial completion."
+              "The publish job failed after $BASE was updated: $RUN_URL. Use \"Re-run failed jobs\" on that run: the fast-forward is a no-op now and the remaining steps tolerate partial completion, so it uploads the artifact CI tested. A fresh dispatch works too but builds whatever $BASE points at by then."
           elif git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
             open_issue "Release v$VERSION needs a human: $BRANCH was not published" \
               "The publish job refused $BRANCH: $RUN_URL. The branch no longer matches the commit CI tested, or $BASE could not be updated. Scheduled runs skip this version while the branch exists; inspect it, then delete it to let the next run retry."
           else
-            echo "::warning::$BASE moved while CI ran; $BRANCH was dropped and the next scheduled run retries from the new base"
+            echo "::warning::$BASE does not contain $SHA and $BRANCH is gone: either $BASE moved while CI ran and the branch was dropped, or someone deleted it. On main the next scheduled run starts over; a dispatch has to be repeated by hand"
           fi

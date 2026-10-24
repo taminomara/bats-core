@@ -95,6 +95,16 @@ def decide(
             return Decision(
                 False, target, pin.version, "rebuild requires the current tag"
             )
+        # A rebuild of a pin that never reached PyPI would skip that version
+        # and cut the next number; the failed release has to finish first.
+        if not pypi_has(pin.version):
+            return Decision(
+                False,
+                target,
+                pin.version,
+                f"{pin.version} is not on PyPI; publish it first by re-running "
+                "the failed publish job or dispatching without rebuild",
+            )
         version = next_rebuild(pin.version)
     elif target != pin.tag:
         version = version_from_tag(target)

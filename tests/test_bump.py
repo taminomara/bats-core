@@ -282,3 +282,19 @@ def test_main_rebuild_keeps_recorded_sha(pyproject, monkeypatch):
 
     assert rc == 0
     assert read_pin(pyproject) == Pin("1.14.0.1", "v1.14.0", COMMIT, "c" * 64)
+
+
+def test_main_same_tag_new_commit_hashes_the_new_archive(pyproject, monkeypatch):
+    hashed: list[str] = []
+
+    def tarball_sha256(commit: str) -> str:
+        hashed.append(commit)
+        return "a" * 64
+
+    monkeypatch.setattr(bump, "tarball_sha256", tarball_sha256)
+
+    rc = bump.main(["v1.14.0", "--commit", NEW_COMMIT, "--pyproject", str(pyproject)])
+
+    assert rc == 0
+    assert hashed == [NEW_COMMIT]
+    assert read_pin(pyproject) == Pin("1.14.0", "v1.14.0", NEW_COMMIT, "a" * 64)

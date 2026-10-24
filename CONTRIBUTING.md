@@ -13,6 +13,13 @@ immutable and a tag is not. The SHA-256 is recorded when the pin is bumped,
 so it guarantees that every build and rebuild of a version uses identical
 upstream bytes; it does not authenticate the release. The checks that do
 stand between upstream and PyPI are below under "What gates a release".
+Should GitHub ever serve different bytes for the pinned commit, every build
+fails with a hash mismatch; inspect the new archive, then record its hash
+with a rebuild, since an explicit hash wins over the recorded one:
+
+```sh
+uv run scripts/bump.py v1.14.0 --rebuild --sha256 <new hash>
+```
 
 ## Development
 
@@ -99,11 +106,14 @@ Releases are automatic. `.github/workflows/update.yml` runs daily:
 5. Every other failure opens a deduplicated issue: a failed detect or bump
    job, a red CI where no PR could be opened (the initial-publish and retry
    branches carry no commits), a refused bump branch, and a publish failure
-   after `main` was updated. The steps after the fast-forward tolerate partial completion, so a
-   fresh dispatch or the next scheduled run finishes the release. Use a fresh
-   dispatch, not "Re-run failed jobs": the bump branch is deleted once
-   `main` carries the commit. If `main` moved while CI ran, the bump branch
-   is dropped and the next run starts over from the new `main`.
+   after `main` was updated. Once `main` carries the commit, the fast-forward
+   is a no-op and the steps after it tolerate partial completion, so "Re-run
+   failed jobs" on that run finishes the release with the artifact CI tested.
+   A fresh dispatch or the next scheduled run works too, but builds whatever
+   `main` points at by then; the workflow warns when the existing tag and the
+   upload disagree. If `main` moved while CI ran, the bump branch is dropped
+   and the next scheduled run starts over from the new `main`; a dispatch has
+   to be repeated by hand.
 
 Run the workflow by hand from the Actions tab to publish early, target a
 specific `tag`, or publish a packaging `rebuild` of the current pin.
@@ -158,7 +168,8 @@ pick it up.
 
 2. Dispatch `update.yml` on `release/1.13` with `tag: v1.13.0` and `rebuild`
    checked. That publishes `1.13.0.1`. If `1.13.0` itself was never
-   published from this repo, dispatch once without `rebuild` first.
+   published from this repo, dispatch once without `rebuild` first: detect
+   refuses a rebuild while the pinned version is not on PyPI.
 
 3. Keep the release branch; the `v1.13.0.*` tags point into it.
 
@@ -186,14 +197,15 @@ The pipeline publishes to pypi.org. To rehearse on TestPyPI, add
 edits are deliberate one-offs rather than a setting, because a half-switched
 pair is worse than either index. Tags and GitHub releases created during a
 TestPyPI phase stay valid: every publish step is idempotent, so the first
-live run uploads the existing version to PyPI and skips the rest.
+live run uploads the existing version to PyPI and skips the rest, with a
+warning that the tag predates the build.
 
 ### One-time setup
 
 - Register a pending publisher for the `bats-core` project with owner
   `taminomara`, repository `bats-core`, workflow `update.yml`, environment
-  `pypi`. Do this on the index `PYPI_HOST` points at; TestPyPI and PyPI
-  each need their own.
+  `pypi`. Do this on pypi.org, and on TestPyPI too when rehearsing; each
+  index needs its own.
 - Create the `pypi` environment. Limit its deployment branches to `main` and
   `release/*`. Do not add required reviewers unless every release should
   wait for a manual approval.

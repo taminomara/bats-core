@@ -269,7 +269,16 @@ def test_branch_exists_against_a_real_remote(tmp_path, monkeypatch):
         "GIT_COMMITTER_EMAIL": "t@example.com",
     }
     subprocess.run(
-        ["git", "commit", "-q", "--allow-empty", "-m", "init"],
+        [
+            "git",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "init",
+        ],
         cwd=clone,
         env=env,
         check=True,
@@ -299,3 +308,40 @@ def test_decide_tag_override_allows_downgrade():
 
     assert d.proceed
     assert d.version == "1.13.0"
+
+
+def test_decide_rebuild_refuses_unpublished_pin():
+    # A rebuild publish that failed after the merge leaves the pin off PyPI;
+    # a second rebuild would skip it and cut the next number instead.
+    d = check_upstream.decide(PIN, "v1.14.0", None, True, never, never)
+
+    assert not d.proceed
+    assert d.version == "1.14.0"
+    assert "not on PyPI" in d.reason
+
+
+def test_decide_downgrade_check_is_numeric():
+    pin = Pin("1.10.0", "v1.10.0", "d" * 40, "x" * 64)
+
+    d = check_upstream.decide(pin, "v1.9.0", None, False, never, never)
+
+    assert not d.proceed
+    assert "older" in d.reason
+
+
+def test_decide_downgrade_check_ignores_rebuild_component():
+    pin = Pin("1.14.0.1", "v1.14.0", "d" * 40, "x" * 64)
+
+    d = check_upstream.decide(pin, "v1.13.0", None, False, never, never)
+
+    assert not d.proceed
+    assert "older" in d.reason
+
+
+def test_decide_newer_patch_over_rebuild_pin_proceeds():
+    pin = Pin("1.14.0.1", "v1.14.0", "d" * 40, "x" * 64)
+
+    d = check_upstream.decide(pin, "v1.14.1", None, False, never, never)
+
+    assert d.proceed
+    assert d.version == "1.14.1"

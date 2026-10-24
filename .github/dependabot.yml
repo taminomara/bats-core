@@ -1,7 +1,8 @@
 version: 2
 # One grouped PR per ecosystem, on different days so automerge never races
-# itself. The cooldown mirrors COOLDOWN_DAYS for upstream bats: a compromised
-# or broken release gets time to be pulled before it is auto-merged here.
+# itself. The cooldown plays the same role as COOLDOWN_DAYS does for upstream
+# bats, with a longer window: a compromised or broken release gets time to be
+# pulled before it is auto-merged here.
 updates:
   - package-ecosystem: uv
     directory: /
