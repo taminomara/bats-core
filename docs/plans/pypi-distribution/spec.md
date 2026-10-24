@@ -269,8 +269,11 @@ Matrix over `ubuntu-latest` and `macos-latest`:
 4. A final Linux job downloads `dist`, installs the **sdist** into a fresh
    venv and runs `bats --version`, proving the sdist is self-contained.
 
-macOS ships bash 3.2, which is bats' floor, so the macOS leg doubles as the
-old-bash check.
+macOS ships bash 3.2 at `/bin/bash`, bats' floor, but GitHub's runners put
+Homebrew bash 5 first on `PATH`. A macOS-only smoke test shims `bash` to
+`/bin/bash`, asserts the version is 3.x, and runs bats under it. Another
+smoke test installs the wheel into a venv under a directory with a space and
+runs it from there.
 
 ### `update.yml` — scheduled daily and `workflow_dispatch`
 
