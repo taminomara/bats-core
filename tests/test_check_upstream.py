@@ -318,6 +318,17 @@ def test_decide_rebuild_refuses_unpublished_pin():
     assert not d.proceed
     assert d.version == "1.14.0"
     assert "not on PyPI" in d.reason
+    # A dispatch without the tag would move to the latest upstream instead.
+    assert "tag v1.14.0" in d.reason
+
+
+def test_decide_rebuild_checks_the_pinned_version_not_the_next():
+    d = check_upstream.decide(
+        PIN, "v1.14.0", None, True, lambda v: v == "1.14.0", never
+    )
+
+    assert d.proceed
+    assert d.version == "1.14.0.1"
 
 
 def test_decide_downgrade_check_is_numeric():
@@ -329,7 +340,7 @@ def test_decide_downgrade_check_is_numeric():
     assert "older" in d.reason
 
 
-def test_decide_downgrade_check_ignores_rebuild_component():
+def test_decide_refuses_downgrade_from_rebuild_pin():
     pin = Pin("1.14.0.1", "v1.14.0", "d" * 40, "x" * 64)
 
     d = check_upstream.decide(pin, "v1.13.0", None, False, never, never)

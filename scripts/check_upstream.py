@@ -102,8 +102,9 @@ def decide(
                 False,
                 target,
                 pin.version,
-                f"{pin.version} is not on PyPI; publish it first by re-running "
-                "the failed publish job or dispatching without rebuild",
+                f"{pin.version} is not on PyPI; finish that release first: "
+                "re-run its failed publish job, or dispatch with "
+                f"tag {pin.tag} and rebuild unchecked",
             )
         version = next_rebuild(pin.version)
     elif target != pin.tag:

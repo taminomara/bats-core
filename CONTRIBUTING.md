@@ -14,12 +14,11 @@ so it guarantees that every build and rebuild of a version uses identical
 upstream bytes; it does not authenticate the release. The checks that do
 stand between upstream and PyPI are below under "What gates a release".
 Should GitHub ever serve different bytes for the pinned commit, every build
-fails with a hash mismatch; inspect the new archive, then record its hash
-with a rebuild, since an explicit hash wins over the recorded one:
-
-```sh
-uv run scripts/bump.py v1.14.0 --rebuild --sha256 <new hash>
-```
+fails with a hash mismatch. Inspect the new archive, then record its hash
+with `uv run scripts/bump.py <pinned tag> --rebuild --sha256 <new hash>`
+(an explicit hash wins over the recorded one; leave out `--rebuild` if the
+pinned version never reached PyPI), commit, and push. The next run publishes
+it.
 
 ## Development
 
@@ -109,14 +108,18 @@ Releases are automatic. `.github/workflows/update.yml` runs daily:
    after `main` was updated. Once `main` carries the commit, the fast-forward
    is a no-op and the steps after it tolerate partial completion, so "Re-run
    failed jobs" on that run finishes the release with the artifact CI tested.
-   A fresh dispatch or the next scheduled run works too, but builds whatever
-   `main` points at by then; the workflow warns when the existing tag and the
-   upload disagree. If `main` moved while CI ran, the bump branch is dropped
+   A fresh dispatch or the next scheduled run is no substitute: it builds
+   whatever `main` points at by then (the workflow warns when the existing
+   tag and the upload disagree) and does nothing once any file of the version
+   has reached PyPI. If `main` moved while CI ran, the bump branch is dropped
    and the next scheduled run starts over from the new `main`; a dispatch has
    to be repeated by hand.
 
 Run the workflow by hand from the Actions tab to publish early, target a
-specific `tag`, or publish a packaging `rebuild` of the current pin.
+specific `tag`, or publish a packaging `rebuild` of the current pin. Detect
+refuses a `rebuild` while the pinned version is missing from PyPI. If that
+version was deleted from PyPI on purpose, run `uv run scripts/bump.py <tag>
+--rebuild` locally, commit, and push; the next run publishes the new number.
 
 The workflow operates on the branch it was dispatched from: it bumps on a
 branch cut from it, fast-forwards it, and opens failure PRs against it. The
