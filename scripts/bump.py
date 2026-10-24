@@ -114,6 +114,10 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         version = next_rebuild(pin.version)
         commit = pin.commit
+    elif args.tag == pin.tag and not args.commit and not args.sha256:
+        # Same tag, no rebuild: the retry and initial-publish path. Keep the
+        # reviewed pin as is, including a four-part rebuild version.
+        version, commit = pin.version, pin.commit
     else:
         version = version_from_tag(args.tag)
         if args.commit:
@@ -129,7 +133,12 @@ def main(argv: list[str] | None = None) -> int:
             if not info.signed:
                 print(f"::warning::{args.tag} is not a signed tag")
             commit = info.commit
-    sha256 = args.sha256 or tarball_sha256(commit)
+    if args.sha256:
+        sha256 = args.sha256
+    elif args.tag == pin.tag and not args.rebuild and not args.commit:
+        sha256 = pin.sha256
+    else:
+        sha256 = tarball_sha256(commit)
 
     text = args.pyproject.read_text()
     args.pyproject.write_text(rewrite_pin(text, version, args.tag, commit, sha256))

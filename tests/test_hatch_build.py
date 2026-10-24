@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -59,3 +60,36 @@ def test_bundled_version_missing_file(tmp_path):
 
     with pytest.raises(hatch_build.BundleError):
         hatch_build.bundled_version(bats_dir)
+
+
+class FakeMetadata:
+    def __init__(self, version: str) -> None:
+        self.version = version
+
+
+def make_hook(root: Path, version: str) -> hatch_build.BatsBuildHook:
+    return hatch_build.BatsBuildHook(
+        root=str(root),
+        config={},
+        build_config=cast("Any", None),
+        metadata=cast("Any", FakeMetadata(version)),
+        directory=str(root / "dist"),
+        target_name="wheel",
+    )
+
+
+def test_hook_initialize_refuses_mismatched_bundle(tmp_path):
+    make_bundle(tmp_path / "src" / "bats_core", "1.13.0")
+
+    with pytest.raises(hatch_build.BundleError):
+        make_hook(tmp_path, "1.14.0").initialize("standard", {})
+
+
+def test_hook_initialize_accepts_matching_bundle_for_rebuild_version(tmp_path):
+    make_bundle(tmp_path / "src" / "bats_core", "1.14.0")
+
+    make_hook(tmp_path, "1.14.0.1").initialize("standard", {})
+
+
+def test_hook_initialize_skips_editable_builds(tmp_path):
+    make_hook(tmp_path, "1.14.0").initialize("editable", {})

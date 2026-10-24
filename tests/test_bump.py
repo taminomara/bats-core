@@ -248,3 +248,24 @@ def test_main_writes_github_output(pyproject, tmp_path, monkeypatch):
     )
 
     assert output.read_text() == "version=1.15.0\n"
+
+
+def test_main_same_tag_without_rebuild_keeps_the_pin(tmp_path, monkeypatch, capsys):
+    # The scheduled retry path after an unpublished rebuild: detect proceeds
+    # with the four-part pin version; bump must not reset it to the tag.
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        PYPROJECT.replace('version = "1.14.0"', 'version = "1.14.0.1"')
+    )
+
+    def boom(*args):
+        raise AssertionError("same-tag re-pin must not touch the network")
+
+    monkeypatch.setattr(bump, "resolve_tag", boom)
+    monkeypatch.setattr(bump, "tarball_sha256", boom)
+
+    rc = bump.main(["v1.14.0", "--pyproject", str(pyproject)])
+
+    assert rc == 0
+    assert read_pin(pyproject) == Pin("1.14.0.1", "v1.14.0", COMMIT, "c" * 64)
+    assert capsys.readouterr().out.strip() == "1.14.0.1"

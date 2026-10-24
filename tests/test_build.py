@@ -79,3 +79,22 @@ def test_unset_env_always_rebuilds(dist, monkeypatch):
 
     assert not (dist / "stale.whl").exists()
     assert ran
+
+
+def test_failed_fetch_stops_the_build(dist, no_build, monkeypatch):
+    monkeypatch.delenv("BATS_CORE_PREBUILT", raising=False)
+    monkeypatch.setattr(fetch_bats, "main", lambda argv: 1)
+
+    assert build.main() == 1
+
+    assert no_build == []
+
+
+def test_missing_uv_is_reported(dist, monkeypatch, capsys):
+    monkeypatch.delenv("BATS_CORE_PREBUILT", raising=False)
+    monkeypatch.setattr(fetch_bats, "main", lambda argv: 0)
+    monkeypatch.setattr(build.shutil, "which", lambda name: None)
+
+    assert build.main() == 2
+
+    assert "uv not found" in capsys.readouterr().err
