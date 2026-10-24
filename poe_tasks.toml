@@ -1,6 +1,10 @@
 [executor]
 type = "uv"
 
+[tasks.build]
+help = "Fetch the pinned bats release and build sdist + wheel into dist/"
+cmd = "python scripts/build.py"
+
 [tasks.lint]
 help = "Run pre-commit linters"
 cmd = "prek run --all-files"
