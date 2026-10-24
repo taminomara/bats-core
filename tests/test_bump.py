@@ -269,3 +269,16 @@ def test_main_same_tag_without_rebuild_keeps_the_pin(tmp_path, monkeypatch, caps
     assert rc == 0
     assert read_pin(pyproject) == Pin("1.14.0.1", "v1.14.0", COMMIT, "c" * 64)
     assert capsys.readouterr().out.strip() == "1.14.0.1"
+
+
+def test_main_rebuild_keeps_recorded_sha(pyproject, monkeypatch):
+    def boom(commit):
+        raise AssertionError("a rebuild must reuse the recorded hash")
+
+    monkeypatch.setattr(bump, "tarball_sha256", boom)
+    monkeypatch.setattr(bump, "resolve_tag", boom)
+
+    rc = bump.main(["v1.14.0", "--rebuild", "--pyproject", str(pyproject)])
+
+    assert rc == 0
+    assert read_pin(pyproject) == Pin("1.14.0.1", "v1.14.0", COMMIT, "c" * 64)

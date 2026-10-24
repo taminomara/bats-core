@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import urllib.error
 from datetime import datetime, timedelta, timezone
 from email.message import Message
@@ -209,19 +211,91 @@ def test_main_warns_when_not_proceeding(pyproject, monkeypatch, capsys):
     assert "bump/1.15.0" in out
 
 
-def test_pypi_url_defaults_to_pypi_org(monkeypatch):
-    monkeypatch.delenv("PYPI_HOST", raising=False)
-
+def test_pypi_url():
     assert (
         check_upstream.pypi_url("1.14.0")
         == "https://pypi.org/pypi/bats-core/1.14.0/json"
     )
 
 
-def test_pypi_url_honours_pypi_host(monkeypatch):
-    monkeypatch.setenv("PYPI_HOST", "test.pypi.org")
+class FakeResponse:
+    status = 200
 
-    assert (
-        check_upstream.pypi_url("1.14.0")
-        == "https://test.pypi.org/pypi/bats-core/1.14.0/json"
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def fake_urlopen(code: int):
+    def urlopen(url):
+        if code == 200:
+            return FakeResponse()
+        raise urllib.error.HTTPError(url, code, "error", Message(), None)
+
+    return urlopen
+
+
+def test_pypi_has_true_on_200(monkeypatch):
+    monkeypatch.setattr(check_upstream.urllib.request, "urlopen", fake_urlopen(200))
+
+    assert check_upstream.pypi_has("1.14.0") is True
+
+
+def test_pypi_has_false_on_404(monkeypatch):
+    monkeypatch.setattr(check_upstream.urllib.request, "urlopen", fake_urlopen(404))
+
+    assert check_upstream.pypi_has("1.14.0") is False
+
+
+def test_pypi_has_raises_on_other_errors(monkeypatch):
+    monkeypatch.setattr(check_upstream.urllib.request, "urlopen", fake_urlopen(500))
+
+    with pytest.raises(urllib.error.HTTPError):
+        check_upstream.pypi_has("1.14.0")
+
+
+def test_branch_exists_against_a_real_remote(tmp_path, monkeypatch):
+    origin = tmp_path / "origin.git"
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    subprocess.run(["git", "clone", "-q", str(origin), str(clone)], check=True)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@example.com",
+    }
+    subprocess.run(
+        ["git", "commit", "-q", "--allow-empty", "-m", "init"],
+        cwd=clone,
+        env=env,
+        check=True,
     )
+    subprocess.run(
+        ["git", "push", "-q", "origin", "HEAD:refs/heads/bump/1.15.0"],
+        cwd=clone,
+        check=True,
+    )
+    monkeypatch.chdir(clone)
+
+    assert check_upstream.branch_exists("bump/1.15.0") is True
+    assert check_upstream.branch_exists("bump/9.9.9") is False
+
+
+def test_decide_refuses_downgrade_on_schedule():
+    d = check_upstream.decide(
+        PIN, "v1.11.2", None, False, never, never, published_at=OLD, now=NOW
+    )
+
+    assert not d.proceed
+    assert "older" in d.reason
+
+
+def test_decide_tag_override_allows_downgrade():
+    d = check_upstream.decide(PIN, "v1.14.0", "v1.13.0", False, never, never)
+
+    assert d.proceed
+    assert d.version == "1.13.0"

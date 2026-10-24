@@ -133,9 +133,11 @@ def main(argv: list[str] | None = None) -> int:
             if not info.signed:
                 print(f"::warning::{args.tag} is not a signed tag")
             commit = info.commit
+    # A rebuild and a same-tag re-pin reuse the recorded hash: the point of
+    # the pin is that every build of a version sees identical bytes.
     if args.sha256:
         sha256 = args.sha256
-    elif args.tag == pin.tag and not args.rebuild and not args.commit:
+    elif args.rebuild or (args.tag == pin.tag and not args.commit):
         sha256 = pin.sha256
     else:
         sha256 = tarball_sha256(commit)

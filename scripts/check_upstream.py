@@ -22,7 +22,7 @@ from pathlib import Path
 import fetch_bats
 from bump import github_get, next_rebuild, version_from_tag
 
-PYPI_URL = "https://{host}/pypi/bats-core/{version}/json"
+PYPI_URL = "https://pypi.org/pypi/bats-core/{version}/json"
 DEFAULT_COOLDOWN_DAYS = 3
 
 
@@ -51,10 +51,7 @@ def latest_release() -> Release:
 
 
 def pypi_url(version: str) -> str:
-    # PYPI_HOST selects the index; the workflow sets it to test.pypi.org
-    # while publishing is pointed at TestPyPI.
-    host = os.environ.get("PYPI_HOST", "pypi.org")
-    return PYPI_URL.format(host=host, version=version)
+    return PYPI_URL.format(version=version)
 
 
 def pypi_has(version: str) -> bool:
@@ -74,6 +71,10 @@ def branch_exists(name: str) -> bool:
         check=False,
     )
     return result.returncode == 0
+
+
+def _base_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split(".")[:3])
 
 
 def decide(
@@ -97,6 +98,12 @@ def decide(
         version = next_rebuild(pin.version)
     elif target != pin.tag:
         version = version_from_tag(target)
+        # The schedule only moves forward; a human naming an older tag (a
+        # backport on a release branch) has made that call explicitly.
+        if tag_override is None and _base_tuple(version) < _base_tuple(pin.version):
+            return Decision(
+                False, target, version, f"{target} is older than the pinned {pin.tag}"
+            )
         # The cooldown gives upstream time to notice and pull a bad release.
         # A human naming the tag explicitly has made that call already.
         if tag_override is None and published_at is not None and cooldown_days:
