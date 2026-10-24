@@ -31,7 +31,7 @@ commands = [
 ]
 pass_env = ["PYTEST*", "COVERAGE*"]
 depends = ["coverage-clean"]
-package = "uv"
+package = "external"
 set_env = { COVERAGE_FILE = "{env:COVERAGE_FILE:.coverage}.{envname}" }
 
 [env.type]
@@ -87,3 +87,8 @@ depends = [
     "3.10",
 ]
 set_env = { COVERAGE_FILE = "{env:COVERAGE_FILE:.coverage}" }
+
+[env.".pkg_external"]
+description = "Build dist/ from the pinned bats release"
+commands = [["python", "{tox_root}/scripts/build.py"]]
+package_glob = "{tox_root}/dist/*.whl"
