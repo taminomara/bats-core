@@ -1,0 +1,89 @@
+requires = ["tox>=4"]
+env_list = [
+    "3.14",
+    "3.13",
+    "3.12",
+    "3.11",
+    "3.10",
+    "type",
+    "lint",
+    "coverage-clean",
+    "coverage-combine",
+]
+depends = []
+
+[env_run_base]
+description = "Run tests under {base_python}"
+dependency_groups = ["dev"]
+commands = [
+    [
+        "uv",
+        "run",
+        "--active",
+        "--no-sync",
+        "pytest",
+        "tests",
+        "--cov",
+        "--cov-append",
+        { replace = "posargs", default = [
+        ], extend = true },
+    ],
+]
+pass_env = ["PYTEST*", "COVERAGE*"]
+depends = ["coverage-clean"]
+package = "uv"
+set_env = { COVERAGE_FILE = "{env:COVERAGE_FILE:.coverage}.{envname}" }
+
+[env.type]
+description = "Run type check"
+commands = [
+    [
+        "uv",
+        "run",
+        "--active",
+        "--no-sync",
+        "ty",
+        "check",
+        { replace = "posargs", default = [
+        ], extend = true },
+    ],
+]
+base_python = ["3.14"]
+depends = []
+
+[env.lint]
+description = "Run pre-commit hooks"
+commands = [
+    [
+        "uv",
+        "run",
+        "--active",
+        "--no-sync",
+        "prek",
+        "run",
+        "--all-files",
+        { replace = "posargs", default = [
+        ], extend = true },
+    ],
+]
+depends = []
+
+[env.coverage-clean]
+description = "Delete coverage data"
+skip_install = true
+commands = [["uv", "run", "--active", "--no-sync", "coverage", "erase"]]
+depends = []
+set_env = { COVERAGE_FILE = "{env:COVERAGE_FILE:.coverage}" }
+
+[env.coverage-combine]
+description = "Combine coverage data"
+skip_install = true
+commands = [["uv", "run", "--active", "--no-sync", "coverage", "combine"]]
+depends = [
+    "3.14",
+    "3.13",
+    "3.12",
+    "3.11",
+    "3.10",
+]
+set_env = { COVERAGE_FILE = "{env:COVERAGE_FILE:.coverage}" }

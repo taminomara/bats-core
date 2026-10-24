@@ -1,0 +1,15 @@
+[run]
+source = ["bats_core"]
+branch = false
+relative_files = true
+
+[report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "^\\s*\\.\\.\\.\\s*$",
+    "@(abc\\.)?abstractmethod",
+]

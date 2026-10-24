@@ -1,0 +1,68 @@
+[project]
+name = "bats-core"
+description = "Bash Automated Testing System (bats-core), packaged for pip"
+dynamic = ["version"]
+requires-python = ">=3.10"
+# Runtime deps: pin exact for a service; use >=X,<N+1 for a library so Renovate
+# can widen the cap. Add with `uv add`.
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "poethepoet==0.49.0",
+    "prek==0.5.5",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.15.1",
+    "tox==4.65.0",
+    "tox-uv==1.36.1",
+    "ty==0.0.34",
+]
+
+[build-system]
+requires = ["setuptools>=68", "setuptools_scm[toml]>=8", "wheel>=0.40"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+version_file = "src/bats_core/_version.py"
+fallback_version = "0.0.0"
+
+[tool.ruff.lint]
+extend-select = ["I", "INP", "T20", "PT", "RET", "SIM", "SLOT", "RUF022"]
+ignore = [
+    "E402",   # Module level import not at top of file
+    "E722",   # Do not use bare `except`
+    "E741",   # Ambiguous variable name
+    "E731",   # Do not assign a `lambda` expression, use a `def`
+    "PT015",  # Assertion is always `False`
+    "PT011",  # Too broad error type
+    "PT012",  # `pytest.raises()` block should contain a single simple statement
+    "PT017",  # Found assertion on exception `e` in `except` block
+    "RET505", # Unnecessary `else` after `return` statement
+    "RET506", # Unnecessary `else` after `raise` statement
+    "RET507", # Unnecessary `else` after `continue` statement
+    "RET508", # Unnecessary `else` after `break` statement
+    "SIM103", # Return the negated condition directly
+    "SIM105", # Use `contextlib.suppress` instead of `try`-`except`-`pass`
+    "SIM108", # Use ternary operator instead of `if`-`else`-block
+    "SIM114", # Combine `if` branches using logical `or` operator
+    "SIM118", # Use `key in dict` instead of `key in dict.keys()`
+    "INP001", # Allow implicit packages.
+]
+extend-safe-fixes = [
+    "RUF022", # Sort `__all__`.
+    "PT006",  # Rewrite arguments for `pytest.mark.parametrize`.
+]
+future-annotations = true
+
+[tool.ruff.lint.isort]
+required-imports = ["from __future__ import annotations"]
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.environment]
+python-version = "3.10"

@@ -1,0 +1,29 @@
+[executor]
+type = "uv"
+
+[tasks.lint]
+help = "Run pre-commit linters"
+cmd = "prek run --all-files"
+
+[tasks.type]
+help = "Run type checker"
+cmd = "tox -e type"
+
+[tasks.test]
+help = "Run tests on python 3.14"
+cmd = "tox -e coverage-clean,3.14,coverage-combine"
+
+[tasks.test-all]
+help = "Run the full Python matrix + lint + type + coverage combine"
+cmd = "tox p"
+
+[tasks._cov-html]
+cmd = "coverage html -d htmlcov"
+
+[tasks._cov-html-serve]
+cmd = "python -m http.server -b localhost 8081"
+cwd = "htmlcov"
+
+[tasks.cov-report]
+help = "Run tests with coverage and serve HTML report on localhost:8081"
+sequence = ["test-all", "_cov-html", "_cov-html-serve"]
