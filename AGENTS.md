@@ -53,6 +53,29 @@ to pytest via tox's `posargs` substitution.
 `pytest.toml` configures pytest (`--strict-markers`); it takes precedence
 over any `[tool.pytest.ini_options]` in `pyproject.toml`.
 
+## Layout
+
+- `src/bats_core/__main__.py` — the `bats` console script; execs the bundled
+  `_bats/bin/bats`.
+- `scripts/fetch_bats.py` — downloads the pinned tarball, verifies SHA-256,
+  unpacks the runtime tree into `src/bats_core/_bats/`.
+- `scripts/build.py` — cleans `dist/`, fetches, runs `uv build`. The only way
+  `dist/` is produced (poe `build`, the tox package env, CI).
+- `scripts/bump.py` — rewrites `version`, `tag` and `sha256` in
+  `pyproject.toml` for a new upstream tag or a packaging rebuild.
+- `scripts/check_upstream.py` — the update workflow's detect step; decides
+  whether a bump is due and writes the decision to `$GITHUB_OUTPUT`.
+- `hatch_build.py` — hatchling hook that refuses to build without a bundle
+  matching `project.version`.
+- `tests/test_smoke.py` runs against the installed wheel; the other tests are
+  offline and import the scripts directly (`pytest.toml` adds `scripts/` to
+  `pythonpath`).
+
+## Releases
+
+Automated by `.github/workflows/update.yml`; see the README's release
+process. Nothing is tagged or published by hand.
+
 ## Conventions worth knowing
 
 - Don't bypass pre-commit hooks (`--no-verify`, etc.) — CI runs the same

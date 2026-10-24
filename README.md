@@ -1,32 +1,33 @@
 # bats-core
 
-Bash Automated Testing System (bats-core), packaged for pip
+[bats-core](https://github.com/bats-core/bats-core), the Bash Automated
+Testing System, packaged for pip. Installing this package gives you a `bats`
+executable that runs the bundled upstream release unchanged. It is POSIX-only
+and needs bash 3.2 or newer, exactly like upstream.
+
 ## Install
 
-`bats-core` is published to the internal GitLab PyPI registry. In the
-consumer project, declare a group-scoped index in `pyproject.toml` (see `mrs`
-for a worked example), then `uv add` it:
-
-```toml
-[[tool.uv.index]]
-name = "server-team"
-url = "https://gitlab.corp.cloudlinux.com/api/v4/groups/1645/-/packages/pypi/simple"
-explicit = true
-
-[tool.uv.sources]
-bats_core = { index = "server-team" }
-```
-
 ```sh
-uv add bats-core
+pip install bats-core
+uv tool install bats-core
+uvx --from bats-core bats --version
 ```
 
-Authenticate the index in CI with `UV_INDEX_SERVER_TEAM_USERNAME=gitlab-ci-token`
-and `UV_INDEX_SERVER_TEAM_PASSWORD=$CI_JOB_TOKEN` (or `uv auth` locally). The URL
-points at group `1645`'s registry (the group that owns the
-package) — change it if this package is published elsewhere.
+## Versioning
+
+The package version is the bats version: `bats-core==1.14.0` bundles bats
+v1.14.0. Packaging-only rebuilds add a fourth component (`1.14.0.1`,
+`1.14.0.2`). To track a bats release including rebuilds, pin with
+`bats-core==1.14.0.*`.
 
 ## Development
+
+The upstream runtime tree is not committed. `scripts/fetch_bats.py` downloads
+the release tarball pinned in `pyproject.toml` under `[tool.bats-core]`,
+verifies its SHA-256, and unpacks `bin/`, `libexec/`, `lib/` and `LICENSE.md`
+into `src/bats_core/_bats/` (gitignored). A hatchling build hook refuses to
+build a wheel or sdist when that directory is missing or its version does not
+match `project.version`.
 
 This repo uses [`uv`](https://docs.astral.sh/uv/) for dependency management,
 [`tox`](https://tox.wiki/) (via `tox-uv`) for the test matrix, and
@@ -37,6 +38,9 @@ Install `uv` first, then:
 ```sh
 # Install / sync the dev environment
 uv sync
+
+# Fetch the pinned bats release and build sdist + wheel into dist/
+uv run poe build
 
 # Lint (ruff + standard hygiene hooks)
 uv run poe lint     # or: uv run tox -e lint
@@ -55,11 +59,42 @@ uv run poe test -- -k test_name -v
 uv run poe test-all -- -x --lf
 ```
 
-Anything after `--` in a poe `test` / `test-all` invocation is forwarded
-to pytest via tox's `posargs` substitution.
-
+tox builds `dist/` once through `scripts/build.py` and installs that wheel
+into every Python environment, so the smoke tests exercise the artifact that
+gets published.
 
 ## Release process
 
-No release pipeline is configured (`release_features` is empty). Add `publish-pypi`
-or `build-container` via `copier update`, or describe your own release process here.
+Releases are automatic. `.github/workflows/update.yml` runs daily:
+
+1. `scripts/check_upstream.py` compares the latest upstream release with the
+   pin and checks whether PyPI already has the matching version.
+2. If a bump is due, `scripts/bump.py` rewrites the pin on a branch
+   `bump/<version>` and `ci.yml` runs the full matrix against it.
+3. On green, the workflow fast-forwards `main`, tags `v<version>`, publishes
+   `dist/` to PyPI through Trusted Publishing, and creates a GitHub release.
+4. On red, it opens a pull request from the bump branch with a link to the
+   failed run. The branch stays until a human merges or deletes it; while it
+   exists, later scheduled runs skip that version instead of opening
+   duplicates. Pull requests opened by the workflow token do not trigger
+   `ci.yml` by themselves; re-run CI manually after fixing.
+
+Run the workflow by hand from the Actions tab to publish early, target a
+specific `tag`, or publish a packaging `rebuild` of the current pin.
+
+### One-time setup
+
+- Register a pending publisher for the `bats-core` project on PyPI with owner
+  `taminomara`, repository `bats-core`, workflow `update.yml`, environment
+  `pypi`.
+- Create the `pypi` environment in the repository settings.
+- Dispatch `update.yml` once with no inputs to publish the current pin.
+- The publish job pushes to `main` directly. If branch protection is ever
+  enabled on `main`, change that step to merge through a pull request with
+  auto-merge.
+
+## License
+
+The packaging code is MIT licensed (see `LICENSE`). bats-core is MIT licensed
+by its authors; its `LICENSE.md` ships inside the wheel under
+`bats_core/_bats/`.
