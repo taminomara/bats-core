@@ -327,7 +327,7 @@ sees the pin matches upstream but PyPI has no such version, so it proceeds.
 | `_bats/` missing at build | hatch hook fails the build with instructions |
 | Bundled version ≠ pin | hatch hook fails the build |
 | Smoke test red on bump | PR with failing-run link; no publish, no tag |
-| Publish fails after tag is pushed | Workflow fails, tag exists without a PyPI release. Re-run `workflow_dispatch`; detect sees PyPI lacks the version and proceeds; publish uses `skip-existing: true` |
+| Publish fails after `main` is updated | The bump branch is already deleted, an issue is opened, and the next scheduled run (or a manual dispatch) retries: detect sees PyPI lacks the version and proceeds; tagging, the PyPI upload (`skip-existing: true`) and the GitHub release are all idempotent |
 | GitHub API error on detect | Job fails; next day retries. Nothing is mutated before detect succeeds |
 
 ## Decisions

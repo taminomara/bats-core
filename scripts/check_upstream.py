@@ -106,6 +106,9 @@ def main(argv: list[str] | None = None) -> int:
         f"proceed={str(decision.proceed).lower()} tag={decision.tag} "
         f"version={decision.version} reason={decision.reason}"
     )
+    if not decision.proceed:
+        # Surfaces the skip on the run summary without opening logs.
+        print(f"::warning::not bumping: {decision.reason}")
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a") as f:

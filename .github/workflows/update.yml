@@ -17,6 +17,11 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
+
+concurrency:
+  group: update-bats
+  cancel-in-progress: false
 
 env:
   BOT_NAME: github-actions[bot]
@@ -100,15 +105,23 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Fast-forward main and tag
+      # Every step from here on is idempotent, so a failed run can simply be
+      # retried: the bump branch is dropped as soon as main has the commit,
+      # and the tag, PyPI upload and release all tolerate already existing.
+      - name: Fast-forward main
         run: |
           git config user.name "$BOT_NAME"
           git config user.email "$BOT_EMAIL"
           git fetch origin "$BRANCH"
           git merge --ff-only "origin/$BRANCH"
           git push origin main
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
+          git push origin --delete "$BRANCH"
+      - name: Tag
+        run: |
+          if ! git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            git tag "v$VERSION"
+            git push origin "v$VERSION"
+          fi
       - uses: actions/download-artifact@v8
         with:
           name: dist
@@ -116,23 +129,37 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
-      - name: GitHub release and cleanup
+      - name: GitHub release
         run: |
-          gh release create "v$VERSION" --generate-notes \
+          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" \
+            --generate-notes \
             --notes "Bundles upstream https://github.com/bats-core/bats-core/releases/tag/$TAG"
-          git push origin --delete "$BRANCH"
 
   report-failure:
-    needs: [detect, bump, test]
-    if: failure() && needs.bump.result == 'success'
+    needs: [detect, bump, test, publish]
+    if: >-
+      always() && needs.bump.result == 'success'
+      && (needs.test.result == 'failure' || needs.publish.result == 'failure')
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.detect.outputs.tag }}
+      VERSION: ${{ needs.bump.outputs.version }}
       BRANCH: ${{ needs.bump.outputs.branch }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      TEST_RESULT: ${{ needs.test.result }}
     steps:
       - uses: actions/checkout@v7
-      - run: |
-          gh pr create --base main --head "$BRANCH" \
-            --title "Bump bats to $TAG (smoke tests failing)" \
-            --body "Automated bump failed CI: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Open a PR for a red bump, or an issue for a failed publish
+        run: |
+          if [ "$TEST_RESULT" = "failure" ]; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "Bump bats to $TAG (smoke tests failing)" \
+              --body "Automated bump failed CI: $RUN_URL"
+          else
+            title="Release v$VERSION failed after merging to main"
+            if [ "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq length)" = "0" ]; then
+              gh issue create --title "$title" \
+                --body "The publish job failed: $RUN_URL. Re-run the Update bats workflow; every publish step is idempotent."
+            fi
+          fi

@@ -78,6 +78,9 @@ Releases are automatic. `.github/workflows/update.yml` runs daily:
    exists, later scheduled runs skip that version instead of opening
    duplicates. Pull requests opened by the workflow token do not trigger
    `ci.yml` by themselves; re-run CI manually after fixing.
+5. If the publish job itself fails after `main` was updated, the workflow
+   opens an issue instead. Every publish step is idempotent, so the next
+   scheduled run (or a manual dispatch) retries the release.
 
 Run the workflow by hand from the Actions tab to publish early, target a
 specific `tag`, or publish a packaging `rebuild` of the current pin.
@@ -88,6 +91,9 @@ specific `tag`, or publish a packaging `rebuild` of the current pin.
   `taminomara`, repository `bats-core`, workflow `update.yml`, environment
   `pypi`.
 - Create the `pypi` environment in the repository settings.
+- Enable "Allow GitHub Actions to create and approve pull requests" under
+  Settings → Actions → General. Without it the on-red path cannot open its
+  pull request.
 - Dispatch `update.yml` once with no inputs to publish the current pin.
 - The publish job pushes to `main` directly. If branch protection is ever
   enabled on `main`, change that step to merge through a pull request with

@@ -110,3 +110,16 @@ def test_main_propagates_api_error(pyproject, tmp_path, monkeypatch):
         check_upstream.main(["--pyproject", str(pyproject)])
 
     assert not output.exists() or "proceed=true" not in output.read_text()
+
+
+def test_main_warns_when_not_proceeding(pyproject, monkeypatch, capsys):
+    monkeypatch.setattr(check_upstream, "latest_tag", lambda: "v1.15.0")
+    monkeypatch.setattr(check_upstream, "pypi_has", never)
+    monkeypatch.setattr(check_upstream, "branch_exists", always)
+
+    rc = check_upstream.main(["--pyproject", str(pyproject)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "::warning::" in out
+    assert "bump/1.15.0" in out
