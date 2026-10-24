@@ -100,21 +100,22 @@ jobs:
       TAG: ${{ needs.detect.outputs.tag }}
       VERSION: ${{ needs.bump.outputs.version }}
       BRANCH: ${{ needs.bump.outputs.branch }}
+      BASE: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
       # Every step from here on is idempotent, so a failed run can simply be
-      # retried: the bump branch is dropped as soon as main has the commit,
+      # retried: the bump branch is dropped as soon as the base branch has the commit,
       # and the tag, PyPI upload and release all tolerate already existing.
-      - name: Fast-forward main
+      - name: Fast-forward the base branch
         run: |
           git config user.name "$BOT_NAME"
           git config user.email "$BOT_EMAIL"
           git fetch origin "$BRANCH"
           git merge --ff-only "origin/$BRANCH"
-          git push origin main
+          git push origin "$BASE"
           git push origin --delete "$BRANCH"
       - name: Tag
         run: |
@@ -146,6 +147,7 @@ jobs:
       TAG: ${{ needs.detect.outputs.tag }}
       VERSION: ${{ needs.bump.outputs.version }}
       BRANCH: ${{ needs.bump.outputs.branch }}
+      BASE: ${{ github.ref_name }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       TEST_RESULT: ${{ needs.test.result }}
     steps:
@@ -153,11 +155,11 @@ jobs:
       - name: Open a PR for a red bump, or an issue for a failed publish
         run: |
           if [ "$TEST_RESULT" = "failure" ]; then
-            gh pr create --base main --head "$BRANCH" \
+            gh pr create --base "$BASE" --head "$BRANCH" \
               --title "Bump bats to $TAG (smoke tests failing)" \
               --body "Automated bump failed CI: $RUN_URL"
           else
-            title="Release v$VERSION failed after merging to main"
+            title="Release v$VERSION failed after merging to $BASE"
             if [ "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq length)" = "0" ]; then
               gh issue create --title "$title" \
                 --body "The publish job failed: $RUN_URL. Re-run the Update bats workflow; every publish step is idempotent."

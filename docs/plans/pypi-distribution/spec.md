@@ -301,7 +301,12 @@ Inputs for manual dispatch: `tag` (optional, default: latest upstream) and
    the body. The branch stays until a human merges or deletes it, which is
    what the detect step's branch check keys on.
 
-The job that pushes to `main` and tags uses `GITHUB_TOKEN` with
+The workflow acts on the branch it was dispatched from (`github.ref_name`),
+not on a hardcoded `main`: the schedule only runs on `main`, while a manual
+dispatch on a `release/<major.minor>` branch with an explicit `tag` publishes
+backports such as `1.13.0.1` without touching `main`.
+
+The job that pushes to the base branch and tags uses `GITHUB_TOKEN` with
 `contents: write`; opening PRs needs `pull-requests: write`. The design
 assumes no branch protection on `main`. If protection is added later, the
 "on green" step has to merge via PR with auto-merge instead of pushing; the

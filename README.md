@@ -85,6 +85,37 @@ Releases are automatic. `.github/workflows/update.yml` runs daily:
 Run the workflow by hand from the Actions tab to publish early, target a
 specific `tag`, or publish a packaging `rebuild` of the current pin.
 
+The workflow operates on the branch it was dispatched from: it bumps on a
+branch cut from it, fast-forwards it, and opens failure PRs against it. The
+schedule only ever runs on `main`.
+
+### Backporting a packaging fix to an older bats
+
+`1.13.0.1` sorts below `1.14.0`, so a backport never changes what a plain
+`pip install bats-core` resolves to; users pinned to `bats-core==1.13.0.*`
+pick it up.
+
+1. Cut a release branch from `main`, pin it to the old bats, and cherry-pick
+   the fix:
+
+   ```sh
+   git switch -c release/1.13 main
+   uv run scripts/bump.py v1.13.0
+   git commit -am "Pin bats 1.13.0"
+   git cherry-pick <fix>
+   git push -u origin release/1.13
+   ```
+
+2. Dispatch `update.yml` on `release/1.13` with `tag: v1.13.0` and `rebuild`
+   checked. That publishes `1.13.0.1`. If `1.13.0` itself was never
+   published from this repo, dispatch once without `rebuild` first.
+
+3. Keep the release branch; the `v1.13.0.*` tags point into it.
+
+Always pass `tag` when dispatching on a release branch. Without it, detect
+compares the pin against the latest upstream release and would try to move
+the branch to the newest bats.
+
 ### One-time setup
 
 - Register a pending publisher for the `bats-core` project on PyPI with owner
