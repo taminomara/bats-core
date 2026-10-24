@@ -2,3 +2,4 @@
 minversion = "9.0"
 addopts = ["--strict-markers"]
 testpaths = ["tests"]
+pythonpath = ["scripts", "."]

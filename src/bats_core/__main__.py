@@ -12,7 +12,7 @@ from bats_core import BATS_EXE
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if not BATS_EXE.is_file():
-        print(f"bats: bundled executable not found at {BATS_EXE}", file=sys.stderr)
+        sys.stderr.write(f"bats: bundled executable not found at {BATS_EXE}\n")
         return 127
     mode = BATS_EXE.stat().st_mode
     if not mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH):
