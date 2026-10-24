@@ -96,11 +96,15 @@ src/bats_core/
     lib/bats-core/*
 scripts/fetch_bats.py         # download + verify + unpack
 scripts/bump.py               # rewrite the pin; used by the update workflow
+scripts/check_upstream.py     # the update workflow's detect step
 scripts/build.py              # clean dist/, fetch, `uv build`
 tests/
   conftest.py
+  test_main.py                # entry point error path and chmod
   test_fetch_bats.py          # offline tests for the fetch script
   test_bump.py                # offline tests for the bump script
+  test_check_upstream.py      # offline tests for the detect logic
+  test_hatch_build.py         # offline tests for the build guard
   test_smoke.py               # against the installed wheel
 docs/plans/pypi-distribution/ # this spec and its plan
 .github/workflows/
@@ -148,14 +152,21 @@ hash and exits without extracting (used to compute the pin for a new release).
 A hatchling build hook (`hatch_build.py`, registered under
 `[tool.hatch.build.hooks.custom]`) runs before every sdist and wheel build. It
 fails with a clear message if `src/bats_core/_bats/bin/bats` is missing, or if
-the bundled bats version does not match `tool.bats-core.tag`. bats declares
-its version as a quoted string in `libexec/bats-core/bats`
-(`version() { printf 'Bats %s\n' "1.14.0"; }` in v1.14.0); the hook extracts
-it with a regex and compares to the tag without the `v`. This catches "bumped
-the pin, forgot to re-run fetch".
+the bundled bats version does not match the first three components of
+`project.version`. bats declares its version on one line of
+`libexec/bats-core/bats` (`export BATS_VERSION='1.14.0'`); the hook extracts
+it with a regex. This catches "bumped the pin, forgot to re-run fetch". The
+hook compares against `project.version` rather than `tool.bats-core.tag` so
+it needs no TOML parser in the build environment; the two agree by the
+versioning invariant above.
 
-The sdist includes `src/bats_core/_bats/`, so installing from sdist never
-needs network access.
+The hook skips editable builds, so `uv sync` on a fresh clone works before
+the first fetch.
+
+`src/bats_core/_bats/` is gitignored, and hatchling excludes VCS-ignored files
+by default, so it is listed under `[tool.hatch.build].artifacts` to force it
+into both the wheel and the sdist. Installing from sdist never needs network
+access.
 
 ### `scripts/build.py`
 
@@ -201,11 +212,16 @@ for upload. The plan has a task to verify which one works.
 
 All tests live in `tests/` and run in every Python env.
 
-`test_fetch_bats.py` and `test_bump.py` are offline: a fixture generates a
+`test_fetch_bats.py`, `test_bump.py`, `test_check_upstream.py`,
+`test_hatch_build.py` and `test_main.py` are offline: a fixture generates a
 tarball shaped like the upstream one, the download function is monkeypatched
-to return it. They cover hash mismatch, path traversal and symlink rejection,
-selective extraction, version derivation from a tag, fourth-component
-increment, and the `pyproject.toml` rewrite leaving everything else untouched.
+to return it, and network and git lookups are passed in as callables. They
+cover hash mismatch, path traversal and symlink rejection, selective
+extraction, version derivation from a tag, fourth-component increment, the
+`pyproject.toml` rewrite leaving everything else untouched, every branch of
+the detect decision, the build guard, and the entry point's missing-file and
+lost-exec-bit paths. `pytest.toml` sets `pythonpath = ["scripts", "."]` so
+tests import the scripts and `hatch_build.py` directly.
 
 `test_smoke.py` locates `bats` with `shutil.which` (the tox env's `bin/` is on
 `PATH`) and `python -m bats_core` via `sys.executable`, then:
@@ -215,9 +231,12 @@ increment, and the `pyproject.toml` rewrite leaving everything else untouched.
 - A passing `.bats` file exits 0 and emits valid TAP (`1..1`, `ok 1 ...`).
 - A failing `.bats` file exits 1 and emits `not ok 1 ...`.
 - `--formatter junit` emits `<testsuites`.
-- `--jobs 2` on two files passes. This exercises `bats-exec-suite` and the
-  semaphore library, proving `lib/` is found.
+- A test file that `load`s a helper `.bash` file and uses `run` plus `$status`
+  passes, exercising `lib/bats-core/test_functions.bash`.
 - `setup_file`/`teardown_file` run, exercising `bats-exec-file`.
+
+`--jobs` is not exercised: bats implements it with GNU parallel, which the
+runners do not guarantee.
 
 Coverage is collected as in the template. It is meaningful for the scripts and
 near-zero for `__main__.py`, which execs away; that is accepted.
@@ -258,7 +277,8 @@ old-bash check.
 Inputs for manual dispatch: `tag` (optional, default: latest upstream) and
 `rebuild` (boolean: publish a fourth-component rebuild of the current pin).
 
-1. **Detect.** Query `GET /repos/bats-core/bats-core/releases/latest`. This
+1. **Detect** (`scripts/check_upstream.py`, so the logic is unit-tested
+   offline). Query `GET /repos/bats-core/bats-core/releases/latest`. This
    endpoint already excludes prereleases and drafts. Compare `tag_name` to
    `tool.bats-core.tag`. If equal, `rebuild` is false, and PyPI already has
    `project.version` (`GET https://pypi.org/pypi/bats-core/<version>/json`
