@@ -22,7 +22,7 @@ import fetch_bats
 from bump import next_rebuild, version_from_tag
 
 LATEST_URL = "https://api.github.com/repos/bats-core/bats-core/releases/latest"
-PYPI_URL = "https://pypi.org/pypi/bats-core/{version}/json"
+PYPI_URL = "https://{host}/pypi/bats-core/{version}/json"
 
 
 @dataclass(frozen=True)
@@ -43,9 +43,16 @@ def latest_tag() -> str:
         return json.load(response)["tag_name"]
 
 
+def pypi_url(version: str) -> str:
+    # PYPI_HOST selects the index; the workflow sets it to test.pypi.org
+    # while publishing is pointed at TestPyPI.
+    host = os.environ.get("PYPI_HOST", "pypi.org")
+    return PYPI_URL.format(host=host, version=version)
+
+
 def pypi_has(version: str) -> bool:
     try:
-        with urllib.request.urlopen(PYPI_URL.format(version=version)) as response:
+        with urllib.request.urlopen(pypi_url(version)) as response:
             return response.status == 200
     except urllib.error.HTTPError as exc:
         if exc.code == 404:

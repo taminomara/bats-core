@@ -116,11 +116,21 @@ Always pass `tag` when dispatching on a release branch. Without it, detect
 compares the pin against the latest upstream release and would try to move
 the branch to the newest bats.
 
+### Publishing target
+
+`PYPI_HOST` at the top of `update.yml` selects the index, for both the
+upload and the "does this version already exist" check. It is currently
+`test.pypi.org` while the pipeline is being proven; set it to `pypi.org` to
+go live. Tags and GitHub releases created during the TestPyPI phase stay
+valid: every publish step is idempotent, so the first live run uploads the
+existing version to PyPI and skips the rest.
+
 ### One-time setup
 
-- Register a pending publisher for the `bats-core` project on PyPI with owner
+- Register a pending publisher for the `bats-core` project with owner
   `taminomara`, repository `bats-core`, workflow `update.yml`, environment
-  `pypi`.
+  `pypi`. Do this on the index `PYPI_HOST` points at; TestPyPI and PyPI
+  each need their own.
 - Create the `pypi` environment. Limit its deployment branches to `main` and
   `release/*`. Do not add required reviewers unless every release should
   wait for a manual approval.

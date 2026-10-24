@@ -123,3 +123,21 @@ def test_main_warns_when_not_proceeding(pyproject, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "::warning::" in out
     assert "bump/1.15.0" in out
+
+
+def test_pypi_url_defaults_to_pypi_org(monkeypatch):
+    monkeypatch.delenv("PYPI_HOST", raising=False)
+
+    assert (
+        check_upstream.pypi_url("1.14.0")
+        == "https://pypi.org/pypi/bats-core/1.14.0/json"
+    )
+
+
+def test_pypi_url_honours_pypi_host(monkeypatch):
+    monkeypatch.setenv("PYPI_HOST", "test.pypi.org")
+
+    assert (
+        check_upstream.pypi_url("1.14.0")
+        == "https://test.pypi.org/pypi/bats-core/1.14.0/json"
+    )
