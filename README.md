@@ -3,7 +3,7 @@
 This package installs the `bats` command from
 [Bats](https://github.com/bats-core/bats-core), the Bash Automated Testing
 System, packaged for pip. It runs the upstream release unchanged. It works on
-Linux and macOS and needs bash 3.2 or newer, exactly like upstream.
+Linux and macOS and needs bash 3.2 or newer.
 
 ## Install
 
@@ -47,8 +47,7 @@ bats 1.14.0. When only the packaging changes, a fourth component is added,
 such as `1.14.0.1`. To follow one bats release including packaging fixes,
 pin `bats-core==1.14.0.*`.
 
-New upstream releases are published here automatically, usually within a
-day.
+New upstream releases are published here automatically with a 3 days cooldown.
 
 ## License
 
