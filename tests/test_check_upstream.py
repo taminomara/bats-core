@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import urllib.error
+from email.message import Message
 from pathlib import Path
 
 import pytest
@@ -99,7 +100,7 @@ def test_main_writes_github_output(pyproject, tmp_path, monkeypatch, capsys):
 
 def test_main_propagates_api_error(pyproject, tmp_path, monkeypatch):
     def boom() -> str:
-        raise urllib.error.HTTPError("url", 403, "rate limited", {}, None)  # type: ignore[arg-type]
+        raise urllib.error.HTTPError("url", 403, "rate limited", Message(), None)
 
     monkeypatch.setattr(check_upstream, "latest_tag", boom)
     output = tmp_path / "gh_output"

@@ -72,7 +72,9 @@ def decide(
     target = tag_override or latest
     if rebuild:
         if target != pin.tag:
-            return Decision(False, target, pin.version, "rebuild requires the current tag")
+            return Decision(
+                False, target, pin.version, "rebuild requires the current tag"
+            )
         version = next_rebuild(pin.version)
     elif target != pin.tag:
         version = version_from_tag(target)
@@ -88,7 +90,9 @@ def decide(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Decide whether a bump is due.")
-    parser.add_argument("--tag", default="", help="upstream tag to target instead of latest")
+    parser.add_argument(
+        "--tag", default="", help="upstream tag to target instead of latest"
+    )
     parser.add_argument("--rebuild", action="store_true")
     parser.add_argument("--pyproject", type=Path, default=fetch_bats.DEFAULT_PYPROJECT)
     args = parser.parse_args(argv)
