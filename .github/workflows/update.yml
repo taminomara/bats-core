@@ -26,9 +26,9 @@ concurrency:
 env:
   BOT_NAME: github-actions[bot]
   BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-  # Index to publish to and to check for existing versions. Switch to
-  # pypi.org once the pipeline is proven on TestPyPI.
-  PYPI_HOST: test.pypi.org
+  # Index to publish to and to check for existing versions;
+  # test.pypi.org to rehearse the pipeline.
+  PYPI_HOST: pypi.org
 
 jobs:
   detect:
