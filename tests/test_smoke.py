@@ -17,7 +17,9 @@ EXPECTED_VERSION = f"Bats {base_version(bats_core.__version__)}"
 def run_bats(*args: str | Path) -> subprocess.CompletedProcess[str]:
     exe = shutil.which("bats")
     assert exe is not None, "bats console script is not on PATH"
-    return subprocess.run([exe, *map(str, args)], capture_output=True, text=True)
+    return subprocess.run(
+        [exe, *map(str, args)], capture_output=True, text=True, check=False
+    )
 
 
 def test_version():
@@ -26,7 +28,10 @@ def test_version():
 
 def test_python_m_version():
     result = subprocess.run(
-        [sys.executable, "-m", "bats_core", "--version"], capture_output=True, text=True
+        [sys.executable, "-m", "bats_core", "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.stdout.strip() == EXPECTED_VERSION
 

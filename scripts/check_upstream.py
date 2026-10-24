@@ -64,6 +64,7 @@ def branch_exists(name: str) -> bool:
     result = subprocess.run(
         ["git", "ls-remote", "--exit-code", "--heads", "origin", name],
         capture_output=True,
+        check=False,
     )
     return result.returncode == 0
 
