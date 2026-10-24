@@ -44,13 +44,48 @@ sha256 = "<sha256 of https://github.com/bats-core/bats-core/archive/refs/tags/v1
 tag it bundles. They differ only by the `v` prefix and the optional fourth
 component. The update bot rewrites exactly these three values and nothing else.
 
+The version is static, not derived from git tags. The bot writes the version,
+builds and tests, and only then tags; a tag-derived version would be
+`1.14.0.devN` at build time.
+
+## Scaffold: the team Python template, stripped
+
+The repository is generated with `uvx copier copy ~/p/cl/python-template .`
+and these answers: `project_name=bats-core`, `package_import_name=bats_core`,
+`project_type=library` (it is the only type with a multi-version tox matrix
+and a configurable floor), `python_dev_version=3.14`,
+`python_min_version=3.10`, `release_features=[]`.
+
+**Kept from the template**: `uv` with `uv.lock`, `[dependency-groups].dev`,
+`tox.toml` with `tox-uv`, `poe_tasks.toml`, `pytest.toml`,
+`.pre-commit-config.yaml` with `prek` and `ruff`, `ty` config,
+`.python-version`, the `[tool.ruff]` rule set, `AGENTS.md`, `docs/plans/` and
+`docs/research/` with their `AGENTS.md`, `src/` layout, `tests/conftest.py`.
+
+**Removed**: `.gitlab-ci.yml`, `renovate.json` (extends a CloudLinux-internal
+preset), `.copier-answers.yml` (the template is internal and we diverge from it
+on purpose; `copier update` is not expected to work), `test_public_exports.py`
+(the package has no Python API), the GitLab registry install section of the
+README, the "Releases" and template-update paragraphs of `AGENTS.md`, every
+Jira and GitLab mention.
+
+**Replaced**: build backend `setuptools` + `setuptools_scm` → `hatchling` with
+a static version and a custom build hook (see Build guard). `project.scripts`
+gets the `bats` entry point.
+
 ## Package layout
 
 ```
 pyproject.toml
 README.md
 LICENSE                       # this repo's MIT license (packaging code)
-hatch_build.py                # build guard, see below
+AGENTS.md
+hatch_build.py                # build guard
+tox.toml
+poe_tasks.toml
+pytest.toml
+.pre-commit-config.yaml
+.python-version
 src/bats_core/
   __init__.py                 # BATS_ROOT path constant, __version__
   __main__.py                 # entry point: exec bundled bin/bats
@@ -61,16 +96,21 @@ src/bats_core/
     lib/bats-core/*
 scripts/fetch_bats.py         # download + verify + unpack
 scripts/bump.py               # rewrite the pin; used by the update workflow
+scripts/build.py              # clean dist/, fetch, `uv build`
 tests/
-  unit/                       # tests for the scripts, offline
-  smoke/                      # tests against an installed wheel
+  conftest.py
+  test_fetch_bats.py          # offline tests for the fetch script
+  test_bump.py                # offline tests for the bump script
+  test_smoke.py               # against the installed wheel
+docs/plans/pypi-distribution/ # this spec and its plan
 .github/workflows/
   ci.yml
   update.yml
 ```
 
-Build backend: hatchling. The wheel is `py3-none-any`, `requires-python >= 3.9`.
-No runtime dependencies. Dev tooling: `uv`, `pytest`, `ruff`.
+The wheel is `py3-none-any`, `requires-python >= 3.10`. No runtime
+dependencies. `tomli` is a dev dependency with marker `python_version < "3.11"`
+for the scripts.
 
 ### Entry point
 
@@ -88,7 +128,7 @@ unchanged inside the package because `bin/bats` resolves `BATS_ROOT` with
 ### What `fetch_bats.py` does
 
 1. Read `tool.bats-core.tag` and `sha256` from `pyproject.toml` (stdlib
-   `tomllib`; on Python < 3.11 fall back to `tomli`, a dev-only dependency).
+   `tomllib`; `tomli` on 3.10).
 2. Download `https://github.com/bats-core/bats-core/archive/refs/tags/<tag>.tar.gz`
    to a temporary file with `urllib`, following the redirect to `codeload`.
 3. Compute SHA-256 and compare with the pin. On mismatch: delete the file,
@@ -117,14 +157,58 @@ the pin, forgot to re-run fetch".
 The sdist includes `src/bats_core/_bats/`, so installing from sdist never
 needs network access.
 
-## Smoke tests
+### `scripts/build.py`
 
-`tests/smoke/` runs against whatever `bats` is on `PATH`. CI installs the
-freshly built wheel into a clean venv first, so the tests exercise the
-installed artifact, not the source tree. Locally
-`uv run --isolated --with dist/*.whl pytest tests/smoke` does the same.
+Deletes `dist/`, runs the fetch, runs `uv build`. It is the single way to
+produce `dist/`, used by the `build` poe task, by the tox package env, and by
+CI. Deleting `dist/` first matters because tox locates the wheel by glob and
+requires exactly one match.
 
-Tests:
+## Testing
+
+### tox matrix
+
+`tox.toml` comes from the template: `env_list = ["3.14", "3.13", "3.12",
+"3.11", "3.10", "type", "lint", "coverage-clean", "coverage-combine"]`,
+`tox-uv` as the backend, `uv run --active --no-sync pytest tests --cov` as the
+command. `tox-uv` downloads missing interpreters through `uv`, so `tox p`
+works on a machine with only one Python installed.
+
+One deliberate change from the template: `package = "external"` instead of
+`package = "uv"`. The template installs the project into each env from the
+working tree; here every env must install the **built wheel**, because the
+smoke tests exist to prove the artifact we publish works. The package env is:
+
+```toml
+[env_run_base]
+package = "external"
+
+[env.".pkg_external"]
+commands = [["uv", "run", "--active", "--no-sync", "python", "scripts/build.py"]]
+package_glob = "{tox_root}/dist/*.whl"
+```
+
+tox runs `scripts/build.py` once, then installs the one wheel it finds in
+`dist/` into every Python env. The same `dist/` is what CI uploads and the
+update workflow publishes, so the tested bytes are the published bytes.
+
+If `package = "external"` turns out not to cooperate with `tox-uv`, the
+fallback is `package = "wheel"`: tox builds the wheel through hatchling, the
+build guard still runs, and CI builds `dist/` separately with `scripts/build.py`
+for upload. The plan has a task to verify which one works.
+
+### Tests
+
+All tests live in `tests/` and run in every Python env.
+
+`test_fetch_bats.py` and `test_bump.py` are offline: a fixture generates a
+tarball shaped like the upstream one, the download function is monkeypatched
+to return it. They cover hash mismatch, path traversal and symlink rejection,
+selective extraction, version derivation from a tag, fourth-component
+increment, and the `pyproject.toml` rewrite leaving everything else untouched.
+
+`test_smoke.py` locates `bats` with `shutil.which` (the tox env's `bin/` is on
+`PATH`) and `python -m bats_core` via `sys.executable`, then:
 
 - `bats --version` prints `Bats <project.version without fourth component>`.
 - `python -m bats_core --version` prints the same.
@@ -135,22 +219,39 @@ Tests:
   semaphore library, proving `lib/` is found.
 - `setup_file`/`teardown_file` run, exercising `bats-exec-file`.
 
-CI matrix: `ubuntu-latest` and `macos-latest`, Python `3.9` and `3.x`
-(latest). macOS ships bash 3.2, which is bats' floor, so the macOS leg
-doubles as the old-bash check.
+Coverage is collected as in the template. It is meaningful for the scripts and
+near-zero for `__main__.py`, which execs away; that is accepted.
+
+### `lint` and `type` envs
+
+Unchanged from the template: `prek run --all-files` (ruff check, ruff format,
+hygiene hooks) and `ty check`. `scripts/` and `hatch_build.py` are included in
+`[tool.ty.src].include`.
+
+### Local commands
+
+```sh
+uv sync
+uv run poe build       # dist/ from the pinned bats
+uv run poe test        # 3.14 only
+uv run poe test-all    # tox p: full matrix + lint + type
+```
 
 ## Workflows
 
 ### `ci.yml` — on push to `main`, on pull requests, and `workflow_call`
 
-1. Checkout, set up `uv` and Python.
-2. `uv run pytest tests/unit`.
-3. `uv run scripts/fetch_bats.py`.
-4. `uv build` (sdist + wheel). Upload `dist/` as an artifact.
-5. Matrix job: download `dist/`, create a venv, install the wheel, run
-   `pytest tests/smoke`.
-6. One job installs from the **sdist** on Linux and runs `bats --version`,
-   proving the sdist is self-contained.
+Matrix over `ubuntu-latest` and `macos-latest`:
+
+1. Checkout, `astral-sh/setup-uv`, `uv sync --frozen`.
+2. `uv run tox p -- --color=yes`. The package env runs `scripts/build.py`,
+   which performs the GitHub download.
+3. Upload `dist/` from the Linux leg as an artifact named `dist`.
+4. A final Linux job downloads `dist`, installs the **sdist** into a fresh
+   venv and runs `bats --version`, proving the sdist is self-contained.
+
+macOS ships bash 3.2, which is bats' floor, so the macOS leg doubles as the
+old-bash check.
 
 ### `update.yml` — scheduled daily and `workflow_dispatch`
 
@@ -160,7 +261,8 @@ Inputs for manual dispatch: `tag` (optional, default: latest upstream) and
 1. **Detect.** Query `GET /repos/bats-core/bats-core/releases/latest`. This
    endpoint already excludes prereleases and drafts. Compare `tag_name` to
    `tool.bats-core.tag`. If equal, `rebuild` is false, and PyPI already has
-   `project.version`, exit 0 with a "nothing to do" notice. If a branch
+   `project.version` (`GET https://pypi.org/pypi/bats-core/<version>/json`
+   returns 200), exit 0 with a "nothing to do" notice. If a branch
    `bump/<version>` already exists on the remote, also exit 0: a previous
    attempt is awaiting a human.
 2. **Bump.** `scripts/bump.py <tag>` computes the tarball SHA-256 via
@@ -170,9 +272,10 @@ Inputs for manual dispatch: `tag` (optional, default: latest upstream) and
    branch `bump/<version>` and push it.
 3. **Build and test.** Call `ci.yml` via `workflow_call` on the bump branch.
 4. **On green.** Fast-forward `main` to the bump commit, create tag
-   `v<version>`, publish `dist/` to PyPI with `pypa/gh-action-pypi-publish`
-   using Trusted Publishing, and create a GitHub release with auto-generated
-   notes plus a link to the upstream release. Delete the bump branch.
+   `v<version>`, download the `dist` artifact and publish it to PyPI with
+   `pypa/gh-action-pypi-publish` using Trusted Publishing, create a GitHub
+   release with auto-generated notes plus a link to the upstream release.
+   Delete the bump branch.
 5. **On red.** Open a PR from `bump/<version>` to `main` titled
    `Bump bats to <tag> (smoke tests failing)` with a link to the failed run in
    the body. The branch stays until a human merges or deletes it, which is
@@ -207,19 +310,17 @@ sees the pin matches upstream but PyPI has no such version, so it proceeds.
 | Publish fails after tag is pushed | Workflow fails, tag exists without a PyPI release. Re-run `workflow_dispatch`; detect sees PyPI lacks the version and proceeds; publish uses `skip-existing: true` |
 | GitHub API error on detect | Job fails; next day retries. Nothing is mutated before detect succeeds |
 
-## Testing the packaging code itself
-
-`tests/unit/` covers `fetch_bats.py` (hash mismatch, path traversal
-rejection, selective extraction) and `bump.py` (version derivation,
-fourth-component increment, pyproject rewrite) using a locally generated
-tarball fixture, with the download function stubbed. No network.
-
 ## Decisions
 
-- Hatchling over setuptools: declarative config, small custom-hook API.
+- Scaffold from the team template, strip GitLab, Jira, Renovate and the
+  internal-registry docs.
+- Hatchling with a static version over setuptools_scm: the version comes from
+  upstream, not from our tags.
 - No download inside the build backend: installs from PyPI stay reproducible
   and offline.
+- tox installs the externally built wheel so tests and publish share one
+  artifact.
 - Only `bats` gets an entry point.
-- Smoke tests target the installed wheel, not the source tree.
 - Auto-publish on green, PR on red (chosen over PR-always and silent-skip).
 - Four-component version for rebuilds (chosen over `.postN`).
+- Python 3.10–3.14 matrix, matching the template's supported range.
