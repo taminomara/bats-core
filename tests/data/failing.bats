@@ -1,0 +1,3 @@
+@test "fails" {
+  false
+}
