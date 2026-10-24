@@ -1,6 +1,6 @@
 """Download the pinned bats-core release and unpack its runtime tree.
 
-Usage: fetch_bats.py [--tag TAG] [--sha256 HEX] [--print-sha256]
+Usage: fetch_bats.py [--commit SHA] [--sha256 HEX] [--print-sha256]
                      [--dest DIR] [--pyproject FILE]
 """
 
@@ -25,7 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PYPROJECT = ROOT / "pyproject.toml"
 DEFAULT_DEST = ROOT / "src" / "bats_core" / "_bats"
 
-TARBALL_URL = "https://github.com/bats-core/bats-core/archive/refs/tags/{tag}.tar.gz"
+# Archives are fetched by commit, not by tag: a commit is immutable, a tag can
+# be moved.
+TARBALL_URL = "https://github.com/bats-core/bats-core/archive/{commit}.tar.gz"
 RUNTIME_PATHS = ("bin/", "libexec/bats-core/", "lib/bats-core/", "LICENSE.md")
 
 
@@ -33,6 +35,7 @@ RUNTIME_PATHS = ("bin/", "libexec/bats-core/", "lib/bats-core/", "LICENSE.md")
 class Pin:
     version: str
     tag: str
+    commit: str
     sha256: str
 
 
@@ -51,7 +54,7 @@ def read_pin(pyproject: Path) -> Pin:
     with pyproject.open("rb") as f:
         data = tomllib.load(f)
     pin = data["tool"]["bats-core"]
-    return Pin(data["project"]["version"], pin["tag"], pin["sha256"])
+    return Pin(data["project"]["version"], pin["tag"], pin["commit"], pin["sha256"])
 
 
 def download(url: str, dest: Path) -> None:
@@ -67,9 +70,9 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def fetch_tarball(tag: str, dest_dir: Path) -> Path:
-    path = dest_dir / f"{tag}.tar.gz"
-    download(TARBALL_URL.format(tag=tag), path)
+def fetch_tarball(commit: str, dest_dir: Path) -> Path:
+    path = dest_dir / f"{commit}.tar.gz"
+    download(TARBALL_URL.format(commit=commit), path)
     return path
 
 
@@ -110,7 +113,7 @@ def extract_runtime(tarball: Path, dest: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fetch the pinned bats-core release.")
-    parser.add_argument("--tag", help="override the pinned tag")
+    parser.add_argument("--commit", help="override the pinned commit")
     parser.add_argument("--sha256", help="override the pinned sha256")
     parser.add_argument(
         "--print-sha256",
@@ -122,11 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     pin = read_pin(args.pyproject)
-    tag = args.tag or pin.tag
+    commit = args.commit or pin.commit
     expected = args.sha256 or pin.sha256
 
     with tempfile.TemporaryDirectory() as tmp:
-        tarball = fetch_tarball(tag, Path(tmp))
+        tarball = fetch_tarball(commit, Path(tmp))
         actual = sha256_of(tarball)
         if args.print_sha256:
             print(actual)
@@ -136,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         extract_runtime(tarball, args.dest)
 
-    print(f"Fetched bats {tag} into {args.dest}")
+    print(f"Fetched bats {pin.tag} ({commit[:12]}) into {args.dest}")
     return 0
 
 

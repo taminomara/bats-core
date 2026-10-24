@@ -26,7 +26,8 @@ bats = "bats_core.__main__:main"
 # Upstream release bundled into the wheel; rewritten by scripts/bump.py.
 [tool.bats-core]
 tag = "v1.14.0"
-sha256 = "bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177"
+commit = "eb7f42f8d608ac693d7a4b67474f6714ea68cfc5"
+sha256 = "845574549f4c9777bf02fcdf307f1bf347d40c66920fb6b47dcc8fdfa065ac39"
 
 [dependency-groups]
 dev = [

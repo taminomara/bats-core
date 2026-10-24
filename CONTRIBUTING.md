@@ -1,12 +1,18 @@
 # Contributing
 
 This repository packages upstream bats-core for PyPI. It contains no bats
-source: `scripts/fetch_bats.py` downloads the release tarball pinned in
-`pyproject.toml` under `[tool.bats-core]`, verifies its SHA-256, and unpacks
-`bin/`, `libexec/`, `lib/` and `LICENSE.md` into `src/bats_core/_bats/`
-(gitignored). A hatchling build hook (`hatch_build.py`) refuses to build a
-wheel or sdist when that directory is missing or its version does not match
-`project.version`.
+source: `scripts/fetch_bats.py` downloads the source archive of the commit
+pinned in `pyproject.toml` under `[tool.bats-core]` (`tag`, `commit`,
+`sha256`), verifies its SHA-256, and unpacks `bin/`, `libexec/`, `lib/` and
+`LICENSE.md` into `src/bats_core/_bats/` (gitignored). A hatchling build hook
+(`hatch_build.py`) refuses to build a wheel or sdist when that directory is
+missing or its version does not match `project.version`.
+
+The archive is fetched by commit rather than by tag because a commit is
+immutable and a tag is not. The SHA-256 is recorded when the pin is bumped,
+so it guarantees that every build and rebuild of a version uses identical
+upstream bytes; it does not authenticate the release. The checks that do
+stand between upstream and PyPI are below under "What gates a release".
 
 ## Development
 
@@ -57,8 +63,9 @@ same file.
 - `scripts/build.py` — cleans `dist/`, fetches, runs `uv build`. The only way
   `dist/` is produced (poe `build`, the tox package env, CI). With
   `BATS_CORE_PREBUILT` set it reuses the single wheel already in `dist/`.
-- `scripts/bump.py` — rewrites `version`, `tag` and `sha256` in
-  `pyproject.toml` for a new upstream tag or a packaging rebuild.
+- `scripts/bump.py` — resolves a tag to its commit via the GitHub API,
+  checks the tag signature, and rewrites `version`, `tag`, `commit` and
+  `sha256` in `pyproject.toml` for a new upstream tag or a packaging rebuild.
 - `scripts/check_upstream.py` — the update workflow's detect step; decides
   whether a bump is due and writes the decision to `$GITHUB_OUTPUT`.
 - `hatch_build.py` — hatchling hook that refuses to build without a bundle
@@ -73,8 +80,9 @@ Releases are automatic. `.github/workflows/update.yml` runs daily:
 
 1. `scripts/check_upstream.py` compares the latest upstream release with the
    pin and checks whether PyPI already has the matching version.
-2. If a bump is due, `scripts/bump.py` rewrites the pin on a branch
-   `bump/<version>` and `ci.yml` runs the full matrix against it.
+2. If a bump is due, `scripts/bump.py` resolves the tag to its commit,
+   rewrites the pin on a branch `bump/<version>`, and `ci.yml` runs the full
+   matrix against it.
 3. On green, the workflow fast-forwards `main`, tags `v<version>`, publishes
    `dist/` to PyPI through Trusted Publishing, and creates a GitHub release.
 4. On red, it opens a pull request from the bump branch with a link to the
@@ -92,6 +100,24 @@ specific `tag`, or publish a packaging `rebuild` of the current pin.
 The workflow operates on the branch it was dispatched from: it bumps on a
 branch cut from it, fast-forwards it, and opens failure PRs against it. The
 schedule only ever runs on `main`.
+
+### What gates a release
+
+Anyone who can publish a release in `bats-core/bats-core` can, in
+principle, get code onto PyPI under this name. Three checks limit that:
+
+- **Cooldown.** The schedule ignores upstream releases younger than
+  `COOLDOWN_DAYS` (3, set in `update.yml`). A release that upstream pulls
+  within that window is never published here. A manual dispatch that names
+  a `tag` bypasses the cooldown; one without a tag does not.
+- **Tag signature.** When the upstream tag is annotated and signed,
+  `bump.py` requires GitHub to report the signature as verified and refuses
+  otherwise. Upstream has also released from unsigned lightweight tags, so an
+  unsigned tag is accepted with a workflow warning rather than refused.
+- **Smoke tests on both platforms**, as described above.
+
+On our side, Trusted Publishing attaches PEP 740 attestations to every file
+uploaded to PyPI, naming this repository, workflow and commit.
 
 ### Backporting a packaging fix to an older bats
 

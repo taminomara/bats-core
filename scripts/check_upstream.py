@@ -1,6 +1,7 @@
 """Decide whether the update workflow should bump, and to which version.
 
-Usage: check_upstream.py [--tag TAG] [--rebuild] [--pyproject FILE]
+Usage: check_upstream.py [--tag TAG] [--rebuild] [--cooldown-days N]
+                         [--pyproject FILE]
 
 Writes proceed/tag/version/reason to $GITHUB_OUTPUT when set.
 """
@@ -8,7 +9,6 @@ Writes proceed/tag/version/reason to $GITHUB_OUTPUT when set.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
@@ -16,13 +16,20 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fetch_bats
-from bump import next_rebuild, version_from_tag
+from bump import github_get, next_rebuild, version_from_tag
 
-LATEST_URL = "https://api.github.com/repos/bats-core/bats-core/releases/latest"
 PYPI_URL = "https://{host}/pypi/bats-core/{version}/json"
+DEFAULT_COOLDOWN_DAYS = 3
+
+
+@dataclass(frozen=True)
+class Release:
+    tag: str
+    published_at: datetime
 
 
 @dataclass(frozen=True)
@@ -33,14 +40,14 @@ class Decision:
     reason: str
 
 
-def latest_tag() -> str:
-    headers = {"Accept": "application/vnd.github+json"}
-    token = os.environ.get("GH_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(LATEST_URL, headers=headers)
-    with urllib.request.urlopen(request) as response:
-        return json.load(response)["tag_name"]
+def parse_published_at(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def latest_release() -> Release:
+    # The "latest" endpoint already excludes prereleases and drafts.
+    data = github_get("/releases/latest")
+    return Release(data["tag_name"], parse_published_at(data["published_at"]))
 
 
 def pypi_url(version: str) -> str:
@@ -76,6 +83,10 @@ def decide(
     rebuild: bool,
     pypi_has: Callable[[str], bool],
     branch_exists: Callable[[str], bool],
+    *,
+    published_at: datetime | None = None,
+    now: datetime | None = None,
+    cooldown_days: int = 0,
 ) -> Decision:
     target = tag_override or latest
     if rebuild:
@@ -86,6 +97,18 @@ def decide(
         version = next_rebuild(pin.version)
     elif target != pin.tag:
         version = version_from_tag(target)
+        # The cooldown gives upstream time to notice and pull a bad release.
+        # A human naming the tag explicitly has made that call already.
+        if tag_override is None and published_at is not None and cooldown_days:
+            age = (now or datetime.now(timezone.utc)) - published_at
+            if age < timedelta(days=cooldown_days):
+                return Decision(
+                    False,
+                    target,
+                    version,
+                    f"cooldown: {target} was released {age.days}d ago, "
+                    f"waiting {cooldown_days}d",
+                )
     else:
         version = pin.version
         if pypi_has(version):
@@ -102,12 +125,26 @@ def main(argv: list[str] | None = None) -> int:
         "--tag", default="", help="upstream tag to target instead of latest"
     )
     parser.add_argument("--rebuild", action="store_true")
+    parser.add_argument(
+        "--cooldown-days",
+        type=int,
+        default=DEFAULT_COOLDOWN_DAYS,
+        help="minimum age of a release before it is bumped to (0 disables)",
+    )
     parser.add_argument("--pyproject", type=Path, default=fetch_bats.DEFAULT_PYPROJECT)
     args = parser.parse_args(argv)
 
     pin = fetch_bats.read_pin(args.pyproject)
+    release = latest_release()
     decision = decide(
-        pin, latest_tag(), args.tag or None, args.rebuild, pypi_has, branch_exists
+        pin,
+        release.tag,
+        args.tag or None,
+        args.rebuild,
+        pypi_has,
+        branch_exists,
+        published_at=release.published_at,
+        cooldown_days=args.cooldown_days,
     )
 
     print(

@@ -50,7 +50,12 @@ def fake_tarball(tmp_path: Path) -> tuple[Path, str]:
     return path, digest
 
 
-def write_pyproject(path: Path, version: str, tag: str, sha256: str) -> Path:
+COMMIT = "e" * 40
+
+
+def write_pyproject(
+    path: Path, version: str, tag: str, sha256: str, commit: str = COMMIT
+) -> Path:
     path.write_text(
         "[project]\n"
         'name = "bats-core"\n'
@@ -58,6 +63,7 @@ def write_pyproject(path: Path, version: str, tag: str, sha256: str) -> Path:
         "\n"
         "[tool.bats-core]\n"
         f'tag = "{tag}"\n'
+        f'commit = "{commit}"\n'
         f'sha256 = "{sha256}"\n'
     )
     return path
@@ -80,7 +86,7 @@ def test_read_pin(tmp_path):
     )
 
     assert fetch_bats.read_pin(pyproject) == fetch_bats.Pin(
-        "1.14.0.1", "v1.14.0", "ab" * 32
+        "1.14.0.1", "v1.14.0", COMMIT, "ab" * 32
     )
 
 
@@ -165,9 +171,7 @@ def test_main_happy_path(fake_tarball, tmp_path, monkeypatch, capsys):
 
     assert rc == 0
     assert (dest / "bin" / "bats").is_file()
-    assert urls == [
-        "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
-    ]
+    assert urls == [f"https://github.com/bats-core/bats-core/archive/{COMMIT}.tar.gz"]
     assert "v1.14.0" in capsys.readouterr().out
 
 
@@ -185,15 +189,13 @@ def test_main_print_sha256(fake_tarball, tmp_path, monkeypatch, capsys):
             str(pyproject),
             "--dest",
             str(dest),
-            "--tag",
-            "v9.9.9",
+            "--commit",
+            "f" * 40,
             "--print-sha256",
         ]
     )
 
     assert rc == 0
     assert capsys.readouterr().out.strip() == digest
-    assert urls == [
-        "https://github.com/bats-core/bats-core/archive/refs/tags/v9.9.9.tar.gz"
-    ]
+    assert urls == [f"https://github.com/bats-core/bats-core/archive/{'f' * 40}.tar.gz"]
     assert not dest.exists()

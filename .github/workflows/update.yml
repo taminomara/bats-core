@@ -29,6 +29,9 @@ env:
   # Index to publish to and to check for existing versions;
   # test.pypi.org to rehearse the pipeline.
   PYPI_HOST: pypi.org
+  # Minimum age of an upstream release before the schedule bumps to it; a
+  # dispatch that names a tag bypasses it.
+  COOLDOWN_DAYS: "3"
 
 jobs:
   detect:
@@ -47,7 +50,7 @@ jobs:
           TAG: ${{ inputs.tag }}
           REBUILD: ${{ inputs.rebuild }}
         run: |
-          args=()
+          args=(--cooldown-days "$COOLDOWN_DAYS")
           [ -n "$TAG" ] && args+=(--tag "$TAG")
           [ "$REBUILD" = "true" ] && args+=(--rebuild)
           uv run scripts/check_upstream.py "${args[@]}"

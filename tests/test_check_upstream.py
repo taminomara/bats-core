@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import urllib.error
+from datetime import datetime, timedelta, timezone
 from email.message import Message
 from pathlib import Path
 
@@ -9,7 +10,9 @@ import pytest
 import check_upstream
 from fetch_bats import Pin
 
-PIN = Pin("1.14.0", "v1.14.0", "x" * 64)
+PIN = Pin("1.14.0", "v1.14.0", "d" * 40, "x" * 64)
+NOW = datetime(2026, 10, 24, 6, 17, tzinfo=timezone.utc)
+OLD = NOW - timedelta(days=30)
 
 
 def never(_: str) -> bool:
@@ -71,18 +74,95 @@ def test_decide_branch_exists_blocks():
     assert "bump/1.15.0" in d.reason
 
 
+def test_decide_cooldown_blocks_fresh_release():
+    d = check_upstream.decide(
+        PIN,
+        "v1.15.0",
+        None,
+        False,
+        never,
+        never,
+        published_at=NOW - timedelta(days=1),
+        now=NOW,
+        cooldown_days=3,
+    )
+
+    assert not d.proceed
+    assert "cooldown" in d.reason
+    assert d.version == "1.15.0"
+
+
+def test_decide_cooldown_passes_old_release():
+    d = check_upstream.decide(
+        PIN,
+        "v1.15.0",
+        None,
+        False,
+        never,
+        never,
+        published_at=NOW - timedelta(days=3, minutes=1),
+        now=NOW,
+        cooldown_days=3,
+    )
+
+    assert d.proceed
+
+
+def test_decide_tag_override_skips_cooldown():
+    d = check_upstream.decide(
+        PIN,
+        "v1.15.0",
+        "v1.15.0",
+        False,
+        never,
+        never,
+        published_at=NOW,
+        now=NOW,
+        cooldown_days=3,
+    )
+
+    assert d.proceed
+
+
+def test_decide_rebuild_ignores_cooldown():
+    d = check_upstream.decide(
+        PIN,
+        "v1.14.0",
+        None,
+        True,
+        always,
+        never,
+        published_at=NOW,
+        now=NOW,
+        cooldown_days=3,
+    )
+
+    assert d.proceed
+    assert d.version == "1.14.0.1"
+
+
+def test_parse_published_at():
+    assert check_upstream.parse_published_at("2026-07-21T19:55:47Z") == datetime(
+        2026, 7, 21, 19, 55, 47, tzinfo=timezone.utc
+    )
+
+
 @pytest.fixture
 def pyproject(tmp_path: Path) -> Path:
     path = tmp_path / "pyproject.toml"
     path.write_text(
         '[project]\nversion = "1.14.0"\n\n[tool.bats-core]\ntag = "v1.14.0"\n'
-        f'sha256 = "{"x" * 64}"\n'
+        f'commit = "{"d" * 40}"\nsha256 = "{"x" * 64}"\n'
     )
     return path
 
 
 def test_main_writes_github_output(pyproject, tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(check_upstream, "latest_tag", lambda: "v1.15.0")
+    monkeypatch.setattr(
+        check_upstream,
+        "latest_release",
+        lambda: check_upstream.Release("v1.15.0", OLD),
+    )
     monkeypatch.setattr(check_upstream, "pypi_has", never)
     monkeypatch.setattr(check_upstream, "branch_exists", never)
     output = tmp_path / "gh_output"
@@ -99,10 +179,10 @@ def test_main_writes_github_output(pyproject, tmp_path, monkeypatch, capsys):
 
 
 def test_main_propagates_api_error(pyproject, tmp_path, monkeypatch):
-    def boom() -> str:
+    def boom() -> check_upstream.Release:
         raise urllib.error.HTTPError("url", 403, "rate limited", Message(), None)
 
-    monkeypatch.setattr(check_upstream, "latest_tag", boom)
+    monkeypatch.setattr(check_upstream, "latest_release", boom)
     output = tmp_path / "gh_output"
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
 
@@ -113,7 +193,11 @@ def test_main_propagates_api_error(pyproject, tmp_path, monkeypatch):
 
 
 def test_main_warns_when_not_proceeding(pyproject, monkeypatch, capsys):
-    monkeypatch.setattr(check_upstream, "latest_tag", lambda: "v1.15.0")
+    monkeypatch.setattr(
+        check_upstream,
+        "latest_release",
+        lambda: check_upstream.Release("v1.15.0", OLD),
+    )
     monkeypatch.setattr(check_upstream, "pypi_has", never)
     monkeypatch.setattr(check_upstream, "branch_exists", always)
 

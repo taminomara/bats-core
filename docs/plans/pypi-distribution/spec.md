@@ -37,12 +37,15 @@ version = "1.14.0"
 
 [tool.bats-core]
 tag = "v1.14.0"
-sha256 = "<sha256 of https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz>"
+commit = "<commit the tag points at>"
+sha256 = "<sha256 of https://github.com/bats-core/bats-core/archive/<commit>.tar.gz>"
 ```
 
 `project.version` is the package version; `tool.bats-core.tag` is the upstream
 tag it bundles. They differ only by the `v` prefix and the optional fourth
-component. The update bot rewrites exactly these three values and nothing else.
+component. `commit` is the tag's target, recorded because tags are mutable
+and commits are not; the archive is fetched by commit. The update bot
+rewrites exactly these four values and nothing else.
 
 The version is static, not derived from git tags. The bot writes the version,
 builds and tests, and only then tags; a tag-derived version would be
@@ -134,7 +137,7 @@ unchanged inside the package because `bin/bats` resolves `BATS_ROOT` with
 
 1. Read `tool.bats-core.tag` and `sha256` from `pyproject.toml` (stdlib
    `tomllib`; `tomli` on 3.10).
-2. Download `https://github.com/bats-core/bats-core/archive/refs/tags/<tag>.tar.gz`
+2. Download `https://github.com/bats-core/bats-core/archive/<commit>.tar.gz`
    to a temporary file with `urllib`, following the redirect to `codeload`.
 3. Compute SHA-256 and compare with the pin. On mismatch: delete the file,
    exit non-zero with both hashes printed.
@@ -144,8 +147,8 @@ unchanged inside the package because `bin/bats` resolves `BATS_ROOT` with
    with absolute paths, `..` components, or link types.
 5. Print the tag and the destination.
 
-Flags: `--tag` and `--sha256` override the pin (the update workflow fetches a
-candidate before committing the pin). `--print-sha256` downloads, prints the
+Flags: `--commit` and `--sha256` override the pin (the update workflow fetches
+a candidate before committing the pin). `--print-sha256` downloads, prints the
 hash and exits without extracting (used to compute the pin for a new release).
 
 ### Build guard
@@ -284,14 +287,16 @@ Inputs for manual dispatch: `tag` (optional, default: latest upstream) and
 1. **Detect** (`scripts/check_upstream.py`, so the logic is unit-tested
    offline). Query `GET /repos/bats-core/bats-core/releases/latest`. This
    endpoint already excludes prereleases and drafts. Compare `tag_name` to
-   `tool.bats-core.tag`. If equal, `rebuild` is false, and PyPI already has
+   `tool.bats-core.tag`. A newer release younger than `COOLDOWN_DAYS` (3) is
+   skipped with a warning unless the dispatch named the tag explicitly. If equal, `rebuild` is false, and PyPI already has
    `project.version` (`GET https://pypi.org/pypi/bats-core/<version>/json`
    returns 200), exit 0 with a "nothing to do" notice. If a branch
    `bump/<version>` already exists on the remote, also exit 0: a previous
    attempt is awaiting a human.
-2. **Bump.** `scripts/bump.py <tag>` computes the tarball SHA-256 via
-   `fetch_bats.py --print-sha256`, rewrites the three pin values in
-   `pyproject.toml`, and prints the new package version. For `rebuild` it
+2. **Bump.** `scripts/bump.py <tag>` resolves the tag to its commit through
+   the GitHub API, refuses a tag whose signature GitHub cannot verify and
+   warns on an unsigned one, computes the archive SHA-256, rewrites the four
+   pin values in `pyproject.toml`, and prints the new package version. For `rebuild` it
    keeps the tag and increments or appends the fourth component. Commit on a
    branch `bump/<version>` and push it.
 3. **Build and test.** Call `ci.yml` via `workflow_call` on the bump branch.
