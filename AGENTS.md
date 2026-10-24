@@ -3,7 +3,7 @@
 This package bundles a pinned [bats-core](https://github.com/bats-core/bats-core)
 release, fetched by `scripts/fetch_bats.py` at build time, and exposes its
 `bats` executable as a console script. `project.version` in `pyproject.toml`
-mirrors the bundled bats version; the pin (`tag`, `sha256`) lives in
+mirrors the bundled bats version; the pin (`tag`, `commit`, `sha256`) lives in
 `[tool.bats-core]` in the same file. The bundle under `src/bats_core/_bats/`
 is gitignored and must never be committed.
 

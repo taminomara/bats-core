@@ -26,10 +26,6 @@ concurrency:
 env:
   BOT_NAME: github-actions[bot]
   BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-  # Index checked for existing versions, and the matching upload endpoint.
-  # To rehearse: test.pypi.org and https://test.pypi.org/legacy/
-  PYPI_HOST: pypi.org
-  PYPI_UPLOAD_URL: https://upload.pypi.org/legacy/
   # Minimum age of an upstream release before the schedule bumps to it; a
   # dispatch that names a tag bypasses it.
   COOLDOWN_DAYS: "3"
@@ -176,9 +172,10 @@ jobs:
         with:
           name: dist
           path: dist
+      # To rehearse on TestPyPI, add `repository-url: https://test.pypi.org/legacy/`
+      # here and point PYPI_URL in scripts/check_upstream.py at test.pypi.org.
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
-          repository-url: ${{ env.PYPI_UPLOAD_URL }}
           skip-existing: true
 
   # Every failed job ends in a deduplicated issue or a PR, so a red run is

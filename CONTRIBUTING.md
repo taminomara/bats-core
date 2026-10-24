@@ -79,7 +79,9 @@ same file.
 Releases are automatic. `.github/workflows/update.yml` runs daily:
 
 1. `scripts/check_upstream.py` compares the latest upstream release with the
-   pin and checks whether PyPI already has the matching version.
+   pin and checks whether PyPI already has the matching version. On the
+   schedule it never moves to an older bats; only a dispatch naming a `tag`
+   can.
 2. If a bump is due, `scripts/bump.py` resolves the tag to its commit and
    rewrites the pin on a branch `bump/<version>`. `ci.yml` runs the full
    matrix against that exact commit, not the branch name.
@@ -167,8 +169,9 @@ the branch to the newest bats.
 ### Dependency updates
 
 Dependabot (`.github/dependabot.yml`) opens one grouped PR per ecosystem
-every week: Python dev dependencies and `uv.lock` (`uv`), GitHub Actions,
-and pre-commit hook revisions. `.github/workflows/automerge.yml` watches CI
+every week, on different days so the merges never race: Python dev
+dependencies and `uv.lock` (`uv`, Monday), GitHub Actions (Tuesday), and
+pre-commit hook revisions (Wednesday). `.github/workflows/automerge.yml` watches CI
 and, when a Dependabot PR's run is green, fast-forwards `main` to it over
 the deploy key and deletes the branch. GitHub marks the PR merged. If `main`
 moved in the meantime the job skips; Dependabot rebases, CI re-runs, and the
@@ -176,12 +179,12 @@ job gets another chance.
 
 ### Publishing target
 
-`PYPI_HOST` and `PYPI_UPLOAD_URL` at the top of `update.yml` select the
-index: the host answers "does this version already exist", the URL receives
-the upload. They are `pypi.org` and `https://upload.pypi.org/legacy/`. To
-rehearse the pipeline, set them to `test.pypi.org` and
-`https://test.pypi.org/legacy/` together; TestPyPI needs its own pending
-publisher registration. Tags and GitHub releases created during a
+The pipeline publishes to pypi.org. To rehearse on TestPyPI, add
+`repository-url: https://test.pypi.org/legacy/` to the publish step in
+`update.yml` and point `PYPI_URL` in `scripts/check_upstream.py` at
+`test.pypi.org`; TestPyPI needs its own pending publisher registration. Both
+edits are deliberate one-offs rather than a setting, because a half-switched
+pair is worse than either index. Tags and GitHub releases created during a
 TestPyPI phase stay valid: every publish step is idempotent, so the first
 live run uploads the existing version to PyPI and skips the rest.
 

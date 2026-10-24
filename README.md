@@ -56,4 +56,4 @@ its authors; its license ships inside the package as
 `bats_core/_bats/LICENSE.md`.
 
 For development, release and maintenance notes see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/taminomara/bats-core/blob/main/CONTRIBUTING.md).
