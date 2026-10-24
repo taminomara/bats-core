@@ -298,3 +298,22 @@ def test_main_same_tag_new_commit_hashes_the_new_archive(pyproject, monkeypatch)
     assert rc == 0
     assert hashed == [NEW_COMMIT]
     assert read_pin(pyproject) == Pin("1.14.0", "v1.14.0", NEW_COMMIT, "a" * 64)
+
+
+def test_main_same_tag_new_hash_keeps_version_and_commit(tmp_path, monkeypatch):
+    # Hash recovery for an unpublished rebuild pin: only the hash changes.
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        PYPROJECT.replace('version = "1.14.0"', 'version = "1.14.0.1"')
+    )
+
+    def boom(*args):
+        raise AssertionError("a same-tag re-hash must not touch the network")
+
+    monkeypatch.setattr(bump, "resolve_tag", boom)
+    monkeypatch.setattr(bump, "tarball_sha256", boom)
+
+    rc = bump.main(["v1.14.0", "--sha256", "b" * 64, "--pyproject", str(pyproject)])
+
+    assert rc == 0
+    assert read_pin(pyproject) == Pin("1.14.0.1", "v1.14.0", COMMIT, "b" * 64)

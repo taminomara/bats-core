@@ -108,10 +108,11 @@ Releases are automatic. `.github/workflows/update.yml` runs daily:
    after `main` was updated. Once `main` carries the commit, the fast-forward
    is a no-op and the steps after it tolerate partial completion, so "Re-run
    failed jobs" on that run finishes the release with the artifact CI tested.
-   A fresh dispatch or the next scheduled run is no substitute: it builds
-   whatever `main` points at by then (the workflow warns when the existing
-   tag and the upload disagree) and does nothing once any file of the version
-   has reached PyPI. If `main` moved while CI ran, the bump branch is dropped
+   Prefer it: a fresh dispatch or the next scheduled run also publishes the
+   version while none of it is on PyPI, but from a new build of the current
+   `main` (the workflow warns when the existing tag and the upload disagree),
+   and once any file has reached PyPI only the re-run finishes it. If `main`
+   moved while CI ran, the bump branch is dropped
    and the next scheduled run starts over from the new `main`; a dispatch has
    to be repeated by hand.
 

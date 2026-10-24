@@ -124,11 +124,12 @@ jobs:
       # Retry contract: once the base branch carries the tested commit this
       # step is a no-op and every later step tolerates already existing, so
       # "Re-run failed jobs" finishes the release with the artifact CI tested.
-      # A fresh dispatch is no substitute: it builds whatever the base branch
-      # points at by then, and does nothing once any file of the version has
-      # reached PyPI. If the base branch moved while CI ran, the bump branch
-      # is dropped and the job fails; the next scheduled run on main starts
-      # over, and a dispatch has to be repeated by hand.
+      # A fresh dispatch also publishes the version while none of it is on
+      # PyPI, but from a new build of the base branch; once any file has
+      # reached PyPI only the re-run finishes it. If the base branch moved
+      # while CI ran, the bump branch is dropped and the job fails; the next
+      # scheduled run on main starts over, and a dispatch has to be repeated
+      # by hand.
       - name: Fast-forward the base branch to the tested commit
         run: |
           git config user.name "$BOT_NAME"
@@ -234,7 +235,7 @@ jobs:
             fi
           elif git merge-base --is-ancestor "$SHA" "origin/$BASE"; then
             open_issue "Release v$VERSION failed after merging to $BASE" \
-              "The publish job failed after $BASE was updated: $RUN_URL. Use \"Re-run failed jobs\" on that run: the fast-forward is a no-op now and the remaining steps tolerate partial completion, so it uploads the artifact CI tested. A fresh dispatch is no substitute: it builds whatever $BASE points at by then, and does nothing once any file of the version has reached PyPI."
+              "The publish job failed after $BASE was updated: $RUN_URL. Use \"Re-run failed jobs\" on that run: the fast-forward is a no-op now and the remaining steps tolerate partial completion, so it uploads the artifact CI tested. Prefer it over a fresh dispatch, which builds the current $BASE instead and does nothing once any file of the version has reached PyPI."
           elif git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
             open_issue "Release v$VERSION needs a human: $BRANCH was not published" \
               "The publish job refused $BRANCH: $RUN_URL. The branch no longer matches the commit CI tested, or $BASE could not be updated. Scheduled runs skip this version while the branch exists; inspect it, then delete it to let the next run retry."

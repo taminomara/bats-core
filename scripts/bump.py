@@ -114,9 +114,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         version = next_rebuild(pin.version)
         commit = pin.commit
-    elif args.tag == pin.tag and not args.commit and not args.sha256:
-        # Same tag, no rebuild: the retry and initial-publish path. Keep the
-        # reviewed pin as is, including a four-part rebuild version.
+    elif args.tag == pin.tag and not args.commit:
+        # Same tag, no rebuild: the retry, initial-publish and re-hash path.
+        # Keep the reviewed pin as is, including a four-part rebuild version.
         version, commit = pin.version, pin.commit
     else:
         version = version_from_tag(args.tag)
