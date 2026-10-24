@@ -51,7 +51,8 @@ def test_prebuilt_without_wheel_builds(dist, monkeypatch):
 
     assert build.main() == 0
 
-    assert ran and ran[0][:2] == ["/usr/bin/uv", "build"]
+    assert ran
+    assert ran[0][:2] == ["/usr/bin/uv", "build"]
 
 
 def test_prebuilt_with_two_wheels_refuses(dist, no_build, monkeypatch, capsys):
