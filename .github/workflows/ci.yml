@@ -16,6 +16,26 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: astral-sh/setup-uv@v10.3.2
+      - run: uv sync --frozen
+      - run: uv run tox -e lint -- --color=always
+
+  type:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: astral-sh/setup-uv@v10.3.2
+      - run: uv sync --frozen
+      - run: uv run tox -e type -- --color=always
+
   test:
     strategy:
       fail-fast: false
@@ -28,7 +48,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
       - uses: astral-sh/setup-uv@v10.3.2
       - run: uv sync --frozen
-      - run: uv run tox p -- --color=yes
+      - run: uv run tox p --skip-env 'lint|type' -- --color=yes
       - uses: actions/upload-artifact@v7
         if: matrix.os == 'ubuntu-latest'
         with:
