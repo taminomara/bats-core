@@ -36,11 +36,11 @@ dev = [
     "prek==0.5.7",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
-    "ruff==0.17.1",
+    "ruff==0.17.2",
     "tomli==2.5.0; python_version < '3.11'",
     "tox==4.65.0",
     "tox-uv==1.36.1",
-    "ty==0.0.90",
+    "ty==0.0.92",
 ]
 
 [build-system]
