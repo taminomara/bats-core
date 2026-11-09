@@ -33,14 +33,14 @@ sha256 = "845574549f4c9777bf02fcdf307f1bf347d40c66920fb6b47dcc8fdfa065ac39"
 dev = [
     "hatchling==1.32.4",
     "poethepoet==0.49.0",
-    "prek==0.5.7",
-    "pytest==9.1.1",
+    "prek==0.5.9",
+    "pytest==9.2.0",
     "pytest-cov==7.1.0",
-    "ruff==0.17.2",
+    "ruff==0.17.3",
     "tomli==2.5.0; python_version < '3.11'",
     "tox==4.65.0",
     "tox-uv==1.36.1",
-    "ty==0.0.92",
+    "ty==0.0.95",
 ]
 
 [build-system]
